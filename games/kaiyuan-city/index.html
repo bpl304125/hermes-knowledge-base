@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>开元·筑城纪 — 3D城市模拟</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a14;overflow:hidden;touch-action:none}
+canvas{display:block}
+#hud{position:fixed;top:8px;left:8px;right:8px;z-index:10;display:flex;gap:8px;flex-wrap:wrap;pointer-events:none}
+.panel{background:rgba(0,0,20,.85);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:8px 12px;color:#fff;font:13px Arial;min-width:80px;text-align:center}
+.panel .val{font-size:1.4em;font-weight:bold;color:#0ff}
+.panel .lbl{font-size:.7em;color:#888}
+#toolbar{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);z-index:10;display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+#toolbar button{background:rgba(0,0,30,.9);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;transition:.2s}
+#toolbar button:hover{background:rgba(0,255,255,.2);border-color:#0ff}
+#toolbar button.active{background:rgba(0,255,255,.3);border-color:#0ff;color:#0ff}
+#toolbar button.disabled{opacity:.4;cursor:not-allowed}
+#info{position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.7);color:#fff;padding:6px 16px;border-radius:20px;font-size:12px;z-index:10;pointer-events:none}
+</style></head>
+<body>
+
+<div id="hud">
+  <div class="panel"><div class="val" id="pop">0</div><div class="lbl">👥 人口</div></div>
+  <div class="panel"><div class="val" id="gold">500</div><div class="lbl">💰 金币</div></div>
+  <div class="panel"><div class="val" id="power">50</div><div class="lbl">⚡ 电力</div></div>
+  <div class="panel"><div class="val" id="water">50</div><div class="lbl">💧 水源</div></div>
+  <div class="panel"><div class="val" id="happy">75</div><div class="lbl">😊 满意度</div></div>
+</div>
+<div id="info">点击地面放置民居 (100💰)</div>
+<div id="toolbar">
+  <button onclick="setMode('house')" id="btn-house" class="active">🏠 民居 100💰</button>
+  <button onclick="setMode('shop')" id="btn-shop">🏪 商铺 200💰</button>
+  <button onclick="setMode('factory')" id="btn-factory">🏭 工厂 300💰</button>
+  <button onclick="setMode('power')" id="btn-power">⚡ 电站 500💰</button>
+  <button onclick="setMode('water')" id="btn-water">💧 水塔 400💰</button>
+  <button onclick="setMode('park')" id="btn-park">🌳 公园 150💰</button>
+  <button onclick="setMode('road')" id="btn-road">🛤️ 道路 50💰</button>
+  <button onclick="setMode('demolish')" id="btn-demolish" style="border-color:#f44">🔨 拆除</button>
+</div>
+
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x1a2a3a);
+scene.fog=new THREE.Fog(0x1a2a3a,10,60);
+
+const camera=new THREE.PerspectiveCamera(50,innerWidth/innerHeight,0.5,150);
+camera.position.set(15,20,15);camera.lookAt(0,0,0);
+
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled=true;
+document.body.appendChild(renderer.domElement);
+
+// 光照
+scene.add(new THREE.AmbientLight(0x334466,2));
+const sun=new THREE.DirectionalLight(0xffeedd,4);
+sun.position.set(20,30,10);sun.castShadow=true;
+sun.shadow.mapSize.set(1024,1024);sun.shadow.camera.far=80;
+scene.add(sun);
+
+// 地面
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(40,40),new THREE.MeshStandardMaterial({color:0x2d5a27,roughness:0.9}));
+ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
+
+// 网格
+const grid=new THREE.GridHelper(40,40,0x448844,0x224422);
+grid.position.y=0.01;scene.add(grid);
+
+// 游戏状态
+const STATE={gold:500,pop:0,power:50,water:50,happy:75,buildings:[],mode:'house'};
+const ROADS=[];
+
+// 建筑类型定义
+const BUILDING_TYPES={
+  house:{cost:100,pop:10,power:-2,water:-3,happy:2,color:0x8899cc,size:[0.8,1.2,0.8],shape:'box',emoji:'🏠'},
+  shop:{cost:200,pop:5,power:-3,water:-2,happy:3,goldPerSec:0.5,color:0xffaa44,size:[0.9,0.9,0.9],shape:'box',emoji:'🏪'},
+  factory:{cost:300,pop:8,power:-5,water:-5,happy:-5,goldPerSec:1,color:0x888888,size:[1.2,1.5,1.2],shape:'box',emoji:'🏭'},
+  power:{cost:500,pop:0,power:30,water:0,happy:-3,color:0x44aaff,size:[0.7,1.8,0.7],shape:'cylinder',emoji:'⚡'},
+  water:{cost:400,pop:0,power:-2,water:25,happy:2,color:0x44ccff,size:[0.7,1.5,0.7],shape:'cylinder',emoji:'💧'},
+  park:{cost:150,pop:0,power:0,water:0,happy:10,color:0x44cc44,size:[1.5,0.3,1.5],shape:'box',emoji:'🌳'},
+  road:{cost:50,pop:0,power:0,water:0,happy:1,color:0x555555,size:[1,0.1,1],shape:'road',emoji:'🛤️'},
+};
+
+// 放置建筑
+function placeBuilding(pos,type){
+  const bt=BUILDING_TYPES[type];
+  if(STATE.gold<bt.cost)return;
+  if(STATE.power+bt.power<0||STATE.water+bt.water<0)return;
+
+  STATE.gold-=bt.cost;STATE.pop+=bt.pop;
+  STATE.power+=bt.power;STATE.water+=bt.water;
+  STATE.happy+=bt.happy;
+
+  const g=new THREE.Group();
+  let mesh;
+  if(bt.shape==='cylinder') mesh=new THREE.Mesh(new THREE.CylinderGeometry(bt.size[0],bt.size[0]*1.1,bt.size[1],8),new THREE.MeshStandardMaterial({color:bt.color,metalness:0.3,roughness:0.5}));
+  else if(bt.shape==='road') mesh=new THREE.Mesh(new THREE.BoxGeometry(...bt.size),new THREE.MeshStandardMaterial({color:bt.color,roughness:0.9}));
+  else {
+    mesh=new THREE.Mesh(new THREE.BoxGeometry(...bt.size),new THREE.MeshStandardMaterial({color:bt.color,metalness:0.2,roughness:0.6}));
+    if(type==='house'){
+      const roof=new THREE.Mesh(new THREE.ConeGeometry(0.6,0.5,4),new THREE.MeshStandardMaterial({color:0xcc6644}));
+      roof.position.y=bt.size[1]/2+0.25;mesh.add(roof);
+    }
+  }
+  mesh.castShadow=true;mesh.receiveShadow=true;
+  if(bt.shape!=='road'){mesh.position.y=bt.size[1]/2;}
+  g.add(mesh);g.position.set(pos.x,0,pos.z);
+  g.userData={type,goldPerSec:bt.goldPerSec||0};
+  scene.add(g);STATE.buildings.push(g);
+
+  // 粒子
+  if(type==='factory'){for(let i=0;i<8;i++)scene.add(spawnSmoke(pos.x,0.8,pos.z));}
+
+  updateHUD();
+}
+
+function spawnSmoke(x,y,z){
+  const p=new THREE.Mesh(new THREE.SphereGeometry(0.1),new THREE.MeshBasicMaterial({color:0x888888,transparent:true,opacity:0.5}));
+  p.position.set(x+(Math.random()-0.5)*0.5,y,z+(Math.random()-0.5)*0.5);
+  p.userData={life:1,vy:0.02};return p;
+}
+
+// 拆除
+function demolish(pos){
+  for(let i=STATE.buildings.length-1;i>=0;i--){
+    const b=STATE.buildings[i];
+    if(Math.abs(b.position.x-pos.x)<0.6&&Math.abs(b.position.z-pos.z)<0.6){
+      const bt=BUILDING_TYPES[b.userData.type];
+      STATE.gold+=Math.floor(bt.cost*0.3);STATE.pop-=bt.pop;
+      STATE.power-=bt.power;STATE.water-=bt.water;STATE.happy-=bt.happy;
+      scene.remove(b);STATE.buildings.splice(i,1);updateHUD();return;
+    }
+  }
+}
+
+function setMode(m){
+  STATE.mode=m;
+  document.querySelectorAll('#toolbar button').forEach(b=>b.classList.remove('active'));
+  document.getElementById('btn-'+m).classList.add('active');
+  const bt=BUILDING_TYPES[m];
+  document.getElementById('info').textContent=`${bt.emoji} ${m==='demolish'?'点击建筑拆除':'点击地面放置 ('+bt.cost+'💰)'}`;
+}
+
+function updateHUD(){
+  document.getElementById('pop').textContent=STATE.pop;
+  document.getElementById('gold').textContent=STATE.gold;
+  document.getElementById('power').textContent=STATE.power;
+  document.getElementById('water').textContent=STATE.water;
+  document.getElementById('happy').textContent=STATE.happy;
+}
+
+// 点击放置
+const raycaster=new THREE.Raycaster();
+renderer.domElement.addEventListener('click',e=>{
+  const mouse=new THREE.Vector2((e.clientX/window.innerWidth)*2-1,-(e.clientY/window.innerHeight)*2+1);
+  raycaster.setFromCamera(mouse,camera);
+  const intersects=raycaster.intersectObjects([ground]);
+  if(intersects.length>0){
+    const p=intersects[0].point;
+    const gp={x:Math.round(p.x),z:Math.round(p.z)};
+    if(STATE.mode==='demolish')demolish(gp);
+    else placeBuilding(gp,STATE.mode);
+  }
+});
+
+// 轨道控制
+let isDragging=false,prevMouse={x:0,y:0},camAngle=0,camElev=0.6;
+renderer.domElement.addEventListener('pointerdown',e=>{isDragging=true;prevMouse={x:e.clientX,y:e.clientY}});
+renderer.domElement.addEventListener('pointermove',e=>{
+  if(!isDragging)return;
+  camAngle-=(e.clientX-prevMouse.x)*0.005;camElev+=(e.clientY-prevMouse.y)*0.003;
+  camElev=Math.max(0.2,Math.min(1.4,camElev));
+  prevMouse={x:e.clientX,y:e.clientY};
+  updateCam();
+});
+renderer.domElement.addEventListener('pointerup',()=>isDragging=false);
+renderer.domElement.addEventListener('wheel',e=>{
+  camElev-=e.deltaY*0.001;camElev=Math.max(0.2,Math.min(1.4,camElev));updateCam();
+});
+
+function updateCam(){
+  const dist=15+STATE.buildings.length*0.3;
+  camera.position.x=Math.cos(camAngle)*dist*Math.cos(camElev);
+  camera.position.z=Math.sin(camAngle)*dist*Math.cos(camElev);
+  camera.position.y=dist*Math.sin(camElev)+5;
+  camera.lookAt(0,0,0);
+}
+
+// 经济循环
+setInterval(()=>{
+  STATE.gold+=STATE.buildings.reduce((sum,b)=>sum+(b.userData.goldPerSec||0),0);
+  STATE.gold=Math.floor(STATE.gold);updateHUD();
+},1000);
+
+// 粒子更新
+function animate(){
+  STATE.buildings.forEach(b=>{
+    b.children.forEach(c=>{
+      if(c.userData&&c.userData.vy){c.position.y+=c.userData.vy;c.userData.life-=0.005;c.material.opacity=c.userData.life;}
+    });
+  });
+  renderer.render(scene,camera);requestAnimationFrame(animate);
+}
+animate();updateHUD();
+window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+</script>
+</body>
+</html>
