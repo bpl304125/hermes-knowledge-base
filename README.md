@@ -1,116 +1,77 @@
-# Hermes AI 知识体系
+# 🎮 Hermes AI 知识体系
 
-> 由 Hermes Agent 系统化学习 18 个平台/仓库生成 | 2026-05-11
-
----
-
-## 一、核心概念与关键术语
-
-### 知识工程层
-
-| 术语 | 定义 | 来源 |
-|------|------|------|
-| **RAG** (检索增强生成) | 文档→分割→向量化→检索→生成的流水线，减少大模型幻觉 | MaxKB, WeKnora, LangChain |
-| **Knowledge Materialization** | 从 LLM 中系统性地提取、结构化知识，构建可查询知识库 | GPTKB (ACL 2025) |
-| **Knowledge Graph** | 代码/SQL/文档→节点-边关系图，Leiden 算法社区发现 | Graphify (46k⭐) |
-| **MCP** (Model Context Protocol) | 标准化工具调用协议，Agent 发现和使用外部工具 | MaxKB, GameCodex |
-| **Agentic Workflow** | 工作流引擎驱动的智能体编排，条件分支+循环 | MaxKB |
-| **Deep Agents** | 内置规划/子代理/文件系统的更高层 Agent 包 | LangChain |
-| **Vectorization** | 文本自动分割+向量化，实现语义检索 | MaxKB, WeKnora |
-| **Semantic Retrieval** | 基于语义相似度的文档召回，非关键词匹配 | WeKnora |
-| **Tool-Use** | Agent 调用外部工具（API/数据库/文件系统）的能力 | LangChain, MaxKB |
-
-### 算法与编程层
-
-| 术语 | 定义 | 来源 |
-|------|------|------|
-| **Project-Based Learning** | 通过构建数十个实战项目来学习编码 | freeCodeCamp |
-| **Algorithm Implementation** | 算法从理论到代码的系统实现 | TheAlgorithms/Python (220k⭐) |
-| **Self-Paced Curriculum** | 自定节奏的线性课程体系 | freeCodeCamp, DataWhale |
+> 由 Hermes Agent 系统化学习生成 | 持续更新
 
 ---
 
-## 二、知识逻辑关系
+## 📚 知识库索引
+
+### 第一部分: [AI 平台与工具](ai-platforms.md)
+18个AI平台/仓库系统学习：LangChain、MaxKB、WeKnora、Graphify、GPTKB、freeCodeCamp、DataWhale、TheAlgorithms等
+
+### 第二部分: [游戏开发底层技术栈](game-dev-foundations.md)
+图形API(OpenGL/Vulkan)、渲染框架(bgfx)、GUI(Dear ImGui)、物理引擎(Box2D/Bullet)、数学库(GLM)、游戏库(raylib)、引擎架构(Hazel)
+
+### 第三部分: [游戏引擎与框架](game-engines.md)
+Godot、Bevy、Unreal、PlayCanvas、O3DE、LÖVE、Flax、Panda3D — 8大引擎对比分析
+
+### 第四部分: [动画影视制作](animation-film.md)
+Blender、OpenToonz、Natron、AI视频工具(Runway/Pika/Sora/Kling)、游戏开发全流程、工具链
+
+### 第五部分: [AI Provider 速查](ai-providers.md)
+10个Provider、916+模型能力覆盖全景
+
+---
+
+## 🎯 技术栈全景图
 
 ```
-                    ┌─────────────────────────────┐
-                    │      AI Agent 应用层          │
-                    │  (智能客服/企业知识库/学术研究)  │
-                    └─────────────┬───────────────┘
-                                  │
-            ┌─────────────────────┼─────────────────────┐
-            │                     │                     │
-    ┌───────▼───────┐    ┌───────▼───────┐    ┌───────▼───────┐
-    │  Agent 工程    │    │  知识管理      │    │  知识图谱      │
-    │ LangChain     │    │ MaxKB/WeKnora │    │ GPTKB/Graphify│
-    │ (编排框架)     │    │ (RAG 平台)     │    │ (结构化知识)   │
-    └───────┬───────┘    └───────┬───────┘    └───────┬───────┘
-            │                     │                     │
-            └─────────────────────┼─────────────────────┘
-                                  │
-                    ┌─────────────▼───────────────┐
-                    │       基础能力层              │
-                    │  算法(TheAlgorithms)          │
-                    │  编程(freeCodeCamp/DataWhale) │
-                    │  文档(CSDN/free-books)        │
-                    └─────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                     应用层                                │
+│   游戏 (Godot/Unreal/Bevy)   动画 (Blender/OpenToonz)    │
+│   影视 (Natron/DaVinci)      AI Agent (LangChain/MaxKB) │
+├──────────────────────────────────────────────────────────┤
+│                     引擎/框架层                           │
+│   渲染 (bgfx/Vulkan/OpenGL)  GUI (Dear ImGui/Penpot)    │
+│   物理 (Box2D/Bullet)        音频 (Audacity/LMMS)       │
+├──────────────────────────────────────────────────────────┤
+│                     基础层                                │
+│   C/C++/Rust/Python  数学(GLM)  算法(TheAlgorithms)     │
+│   Git/CI/CD          知识图谱(Graphify)  RAG(KB平台)    │
+├──────────────────────────────────────────────────────────┤
+│                     基础设施                              │
+│   10个AI Provider (916+模型) | GitHub | 本地GPU (RTX5080)│
+└──────────────────────────────────────────────────────────┘
 ```
 
-**因果链**: 算法基础 → 编程能力 → Agent 框架 → RAG/知识图谱 → 企业级应用
+---
+
+## 🚀 学习路径
+
+### 游戏开发路线
+```
+raylib入门(1月) → LearnOpenGL(3月) → bgfx/Vulkan(6月) → 引擎架构(12月)
+                                    ↓
+                            Godot/Unreal实战项目
+```
+
+### AI Agent 路线
+```
+Python基础 → LangChain入门 → RAG(MaxKB/WeKnora) → Agent开发 → Multi-Agent系统
+```
+
+### 影视动画路线
+```
+Blender基础(3月) → 动画/渲染(6月) → 合成(Natron) → AI增强 → 全流程项目
+```
 
 ---
 
-## 三、方法论原则
+## 📦 代码仓库
 
-### 原则 1：RAG 优先，后 Agent 增强
-先用 RAG 管道解决幻觉问题，再引入 Agent 工作流做复杂编排。
-
-### 原则 2：知识结构化是效率杠杆
-非结构化文档→知识图谱/向量索引，检索效率提升 10-50 倍。
-
-### 原则 3：项目驱动，认证验证
-构建项目→获得认证→求职。freeCodeCamp/DataWhale 共同理念。
-
-### 原则 4：MCP 标准化工具接入
-一次性 MCP 接入，所有 Agent 共享工具。GameCodex 已接入 950+ 游戏开发文档。
-
-### 原则 5：开源社区杠杆
-公共知识库 + 社区贡献 = 指数级价值增长。
+- **GitHub**: https://github.com/bpl304125/hermes-knowledge-base
+- **本地**: `/root/knowledge-base/`
 
 ---
 
-## 四、平台速查表
-
-| 平台 | 规模 | 核心功能 | 最佳场景 | 局限性 |
-|------|------|---------|---------|--------|
-| LangChain | 136k⭐ | Agent 工程框架 | 自定义 Agent、多模型编排 | 学习曲线陡，迭代快 |
-| MaxKB | 20.9k⭐ | 企业级 Agent 平台 | 企业知识库、智能客服 | GPL 协议，Python生态 |
-| WeKnora | 14.5k⭐ | 文档→可查询RAG | 微信生态知识管理 | 腾讯绑定 |
-| Graphify | 46.2k⭐ | 代码→知识图谱 | 代码库理解、架构可视化 | 需AI编码助手配合 |
-| GPTKB | ACL 2025 | LLM知识物化 | 学术研究 | 学术阶段 |
-| freeCodeCamp | 388k⭐ | 免费编程教育 | 零基础学编程 | 偏Web，无中文 |
-| DataWhale | 开源社区 | AI学习路线 | AI入门、中文社区 | 高级内容少 |
-| TheAlgorithms | 220k⭐ | 算法实现全集 | 面试准备、教学 | 只Python |
-| free-books | 388k⭐ | 免费编程书 | 自学参考 | 需筛选质量 |
-| CSDN | 中文最大 | 开发者社区 | 中文技术文档 | 内容质量参差 |
-| GameCodex | 小社区 | 游戏开发AI助手 | 游戏开发辅助 | 文档手动维护 |
-| 百度学术 | - | 中文论文检索 | 中文学术搜索 | 国际覆盖不足 |
-| 创新树 | - | 创新知识平台 | AI素养教育 | 内容有限 |
-| 超星闻道 | - | 科学导航 | 学术资源发现 | 高校绑定 |
-
----
-
-## 五、可用 AI Provider
-
-| # | 服务 | 模型数 | 端点 |
-|---|------|--------|------|
-| 1 | OpenRouter | 365 | openrouter.ai/api/v1 |
-| 2 | 阿里百炼 | 239 | dashscope.aliyuncs.com |
-| 3 | 百度千帆 | 183 | qianfan.baidubce.com/v2 |
-| 4 | 硅基流动 | 102 | api.siliconflow.cn/v1 |
-| 5 | 腾讯混元 | 40 | api.hunyuan.cloud.tencent.com/v1 |
-| 6 | Kimi | 9 | api.moonshot.cn/v1 |
-| 7 | 小米MiMo | 9 | api.xiaomimimo.com/v1 |
-| 8 | 智谱GLM | 7 | open.bigmodel.cn/api/paas/v4 |
-| 9 | MiniMax | M2.7等 | api.minimax.chat/v1 |
-| 10 | DeepSeek | 2 | api.deepseek.com/v1 |
+*由 Hermes Agent @ Nous Research 维护 | 最后更新: 2026-05-11*
