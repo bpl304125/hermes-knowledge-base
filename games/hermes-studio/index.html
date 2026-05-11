@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Hermes Studio — 全知识整合演示</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a14;color:#fff;font:14px monospace;overflow:hidden;display:flex;height:100vh}
+#sidebar{width:240px;background:rgba(0,0,20,.95);border-right:1px solid rgba(255,255,255,.1);padding:12px;overflow-y:auto;flex-shrink:0}
+#sidebar h2{font-size:14px;color:#0ff;margin:12px 0 8px;border-bottom:1px solid rgba(0,255,255,.2);padding-bottom:4px}
+#sidebar .item{padding:6px 10px;margin:3px 0;border-radius:4px;cursor:pointer;font-size:12px;color:#aaa;transition:.2s}
+#sidebar .item:hover{background:rgba(255,255,255,.05);color:#fff}
+#sidebar .item.sel{background:rgba(0,255,255,.15);color:#0ff}
+#main{flex:1;display:flex;flex-direction:column}
+#canvas-area{flex:1;position:relative}
+canvas{display:block;width:100%;height:100%}
+#status{height:28px;background:rgba(0,0,20,.95);border-top:1px solid rgba(255,255,255,.1);display:flex;align-items:center;padding:0 12px;font-size:11px;gap:20px}
+#status span{color:#888}#status .val{color:#0ff}
+</style></head>
+<body>
+<div id="sidebar">
+<h2>🧠 大脑 DeepSeek</h2>
+<div class="item sel" onclick="showDemo('ai-reasoning')">逻辑推理演示</div>
+<h2>🔬 研究员 OpenRouter</h2>
+<div class="item" onclick="showDemo('research')">实时数据搜索</div>
+<h2>🎨 画师 千帆/百炼</h2>
+<div class="item" onclick="showDemo('concept-art')">概念图生成管线</div>
+<h2>🎬 导演 MiniMax</h2>
+<div class="item" onclick="showDemo('audio-video')">音频视频合成</div>
+<h2>📝 书记官 Kimi</h2>
+<div class="item" onclick="showDemo('documentation')">文档生成展示</div>
+<h2>🔧 工程师 硅流</h2>
+<div class="item" onclick="showDemo('batch-inference')">批量推理统计</div>
+<h2>📡 通讯员 混元/MiMo</h2>
+<div class="item" onclick="showDemo('platform')">平台适配矩阵</div>
+<h2>🎮 综合能力</h2>
+<div class="item" onclick="showDemo('all')">全部知识网格</div>
+</div>
+<div id="main">
+<div id="canvas-area"><canvas id="c"></canvas></div>
+<div id="status">
+  <span>模型: <span class="val">10 Provider · 916+模型</span></span>
+  <span>报告: <span class="val">44份</span></span>
+  <span>游戏: <span class="val">10个</span></span>
+  <span>工作流: <span class="val">6管线</span></span>
+  <span>节点: <span class="val">GameForge 6节点</span></span>
+</div>
+</div>
+
+<script>
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let W,H,demo='ai-reasoning',animTime=0;
+
+function resize(){W=canvas.width=canvas.parentElement.clientWidth;H=canvas.height=canvas.parentElement.clientHeight}
+resize();window.addEventListener('resize',resize);
+
+const demos={
+'ai-reasoning':{
+ draw(){
+  ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  // 神经网络推理可视化
+  let layers=[4,6,8,6,3];
+  for(let l=0;l<layers.length;l++){
+   let nx=W*0.15+l*(W*0.7/(layers.length-1));
+   let ny=H/(layers[l]+1);
+   for(let n=0;n<layers[l];n++){
+    let y=ny*(n+1);
+    if(l<layers.length-1){
+     for(let nn=0;nn<layers[l+1];nn++){
+      let ny2=H/(layers[l+1]+1)*(nn+1);
+      let val=Math.sin(n*nn*0.3+animTime*2)*0.5+0.5;
+      ctx.strokeStyle=`rgba(0,255,255,${val*0.3})`;ctx.lineWidth=val*2;
+      ctx.beginPath();ctx.moveTo(nx,y);ctx.lineTo(nx+W*0.5/layers.length,ny2);ctx.stroke();
+     }
+    }
+    let v=Math.sin(n*l*0.8+animTime*3)*0.5+0.5;
+    ctx.fillStyle=`rgba(0,255,255,${v*0.8})`;ctx.beginPath();ctx.arc(nx,y,6+v*4,0,Math.PI*2);ctx.fill();
+   }
+  }
+ }
+},
+'research':{
+ draw(){
+  ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  // 数据搜索可视化
+  let queries=['Godot','Vulkan','ECS','PBR','GGPO','LoRA'];
+  for(let i=0;i<queries.length;i++){
+   let y=H*0.2+i*H*0.12;
+   ctx.fillStyle='#888';ctx.font='14px monospace';ctx.fillText(queries[i],W*0.1,y);
+   let barW=(Math.sin(animTime*2+i)*0.5+0.5)*W*0.5+W*0.1;
+   ctx.fillStyle=`hsla(${i*60+animTime*30},80%,50%,0.5)`;ctx.fillRect(W*0.2,y-8,barW,12);
+   ctx.fillStyle='#0ff';ctx.font='10px monospace';ctx.fillText(`⭐${Math.floor(10000+Math.random()*50000)}`,W*0.75,y);
+  }
+ }
+},
+'concept-art':{
+ draw(){
+  ctx.fillStyle='#100820';ctx.fillRect(0,0,W,H);
+  // 概念图生成步骤
+  let steps=['🧠 Prompt','🎨 Base','🔧 Refine','✨ Final'];
+  for(let i=0;i<steps.length;i++){
+   let x=W*0.15+(i/(steps.length-1))*W*0.7,y=H*0.4;
+   let r=20+Math.sin(animTime+i)*5;
+   ctx.fillStyle='#0ff';ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.stroke();
+   ctx.fillStyle='#fff';ctx.font='12px Arial';ctx.textAlign='center';ctx.fillText(steps[i],x,y+40);
+   if(i<steps.length-1){ctx.strokeStyle='rgba(0,255,255,0.4)';ctx.beginPath();ctx.moveTo(x+r,Math.sin(animTime+i)*20+y);ctx.lineTo(x+W*0.7/(steps.length-1)-r,Math.cos(animTime+i)*20+y);ctx.stroke();}
+  }
+  // 生成进度条
+  let p=(animTime%4)/4;ctx.fillStyle='#0f0';ctx.fillRect(W*0.1,H*0.6,W*0.8*p,4);
+ }
+},
+'documentation':{
+ draw(){
+  ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  // 文档生成展示
+  let docs=['GDD.md','SOUL.md','TECH_STACK.md','RECRUITMENT.md','42+ Reports'];
+  for(let i=0;i<docs.length;i++){
+   let y=H*0.15+i*H*0.15;
+   ctx.fillStyle='#0ff';ctx.fillText('📄',W*0.1,y);
+   ctx.fillStyle='#fff';ctx.fillText(docs[i],W*0.15,y);
+   let len=docs[i].length*8;ctx.fillStyle='rgba(0,255,0,0.3)';ctx.fillRect(W*0.15,y+3,len,2);
+  }
+ }
+},
+'audio-video':{
+ draw(){
+  ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  // 频谱
+  for(let i=0;i<80;i++){
+   let h=(Math.sin(i*0.08+animTime*3)+1)*0.5*H*0.4;
+   ctx.fillStyle=`hsla(${i*3+animTime*50%360},80%,50%,0.6)`;
+   ctx.fillRect(i*W/80,H*0.5-h/2,W/80,h);
+  }
+ }
+},
+'batch-inference':{
+ draw(){
+  ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  // 批量任务网格
+  for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+   let x=c*W/8+2,y=r*H/8+2,s=Math.sin(r*c+animTime)*0.5+0.5;
+   ctx.fillStyle=`hsla(${s*360},70%,50%,${s})`;
+   ctx.fillRect(x,y,W/8-4,H/8-4);
+  }
+ }
+},
+'platform':{
+ draw(){
+  ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  let platforms=['PC','Mac','Linux','Android','iOS','WebGL','抖音','微信'];
+  for(let i=0;i<platforms.length;i++){
+   let x=W*0.1+i*W*0.1,y=H*0.3+Math.sin(animTime*2+i)*20;
+   ctx.fillStyle=i<6?'#0f0':'#ff0';ctx.beginPath();ctx.arc(x,y,15,0,Math.PI*2);ctx.fill();
+   ctx.fillStyle='#fff';ctx.font='10px Arial';ctx.textAlign='center';ctx.fillText(platforms[i],x,y+25);
+  }
+ }
+},
+'all':{
+ draw(){
+  // 全知识网格
+  let topics=['OpenGL','Vulkan','Godot','Unity','Unreal','ECS','PBR','CSM','Shadow','IK','BlendSpace','MotionMatch','GOAP','BehaviorTree','NavMesh',
+  'GGPO','Rollback','Interpolation','WebGPU','R3F','Shader','Tracy','CI/CD','Steam','LoRA','Suno','StableAudio','ElevenLabs','TripoSR','AnimateDiff',
+  'ComfyUI','DeepMotion','Whisper','Firecrawl','GDD','SOUL','NebulaStrike','NeoRunner','KaiyuanCity','GenesisAnime'];
+  ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  let cols=8;
+  for(let i=0;i<topics.length;i++){
+   let col=i%cols,row=Math.floor(i/cols);
+   let x=(col+1)*W/(cols+1),y=(row+1)*H/(Math.ceil(topics.length/cols)+1);
+   let s=Math.sin(i*0.5+animTime)*0.5+0.5;
+   ctx.fillStyle=`hsla(${i*9+animTime*20%360},70%,${40+s*20}%,${0.3+s*0.5})`;
+   ctx.font='10px monospace';ctx.textAlign='center';ctx.fillText(topics[i],x,y);
+  }
+ }
+}
+};
+
+function showDemo(name){
+ demo=name;
+ document.querySelectorAll('#sidebar .item').forEach(i=>i.classList.remove('sel'));
+ document.querySelector(`[onclick="showDemo('${name}')"]`).classList.add('sel');
+}
+
+function loop(){
+ animTime+=0.016;resize();
+ if(demos[demo])demos[demo].draw();
+ requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
