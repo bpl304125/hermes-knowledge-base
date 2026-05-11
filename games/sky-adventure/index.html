@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>蔚蓝冒险 — 抖音小游戏</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#000;overflow:hidden;touch-action:none}
+canvas{display:block}
+#ui{position:fixed;top:10px;left:10px;right:10px;z-index:10;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;font:bold 16px Arial}
+#ui>div{background:rgba(0,0,0,.5);color:#fff;padding:6px 14px;border-radius:20px;backdrop-filter:blur(4px)}
+#score{color:#0ff}#combo{color:#ff0;font-size:12px}
+#start{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.7)}
+#start>div{background:linear-gradient(180deg,#1a80c0,#0a4070);color:#fff;padding:30px 40px;border-radius:20px;text-align:center;border:2px solid #4af;box-shadow:0 0 40px rgba(0,150,255,.3)}
+#start h1{font-size:2em;margin-bottom:8px}#start p{color:#adf;font-size:14px;margin:8px 0}
+#start button{background:#fff;color:#1a80c0;border:none;border-radius:12px;padding:12px 36px;font:bold 18px Arial;cursor:pointer;margin-top:12px}
+#gameover{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.8)}
+#gameover>div{background:#fff;padding:28px 36px;border-radius:20px;text-align:center}
+#gameover h2{color:#e44;font-size:1.5em}#gameover .s{color:#1a80c0;font-size:1.3em;margin:8px 0}
+#gameover button{background:#1a80c0;color:#fff;border:none;border-radius:10px;padding:10px 28px;font:bold 16px Arial;cursor:pointer}
+</style></head>
+<body>
+<div id="ui"><div>⭐ <span id="score">0</span></div><div id="combo"></div><div>💎 <span id="gems">0</span></div></div>
+<div id="start"><div>
+<h1>☁️ 蔚蓝冒险</h1><p>穿越云层，收集星星💎</p><p style="font-size:11px;color:#88c">👆 点击=飞行 ❌ 松手=下降</p>
+<button onclick="startGame()">🚀 出发</button>
+</div></div>
+<div id="gameover"><div>
+<h2>💫 着陆</h2><div class="s" id="finalScore"></div><p id="finalGems"></p>
+<button onclick="restartGame()">🔄 再来一局</button>
+</div></div>
+
+<script>
+const canvas=document.createElement('canvas');
+document.body.appendChild(canvas);
+const ctx=canvas.getContext('2d');
+let W,H,GAME={running:false,score:0,gems:0,playerY:0,playerVY:0,speed:2,clouds:[],stars:[],particles:[],frame:0,holding:false};
+
+function resize(){W=canvas.width=innerWidth;H=canvas.height=innerHeight}
+resize();window.addEventListener('resize',resize);
+
+// 云朵
+class Cloud{
+ constructor(){this.reset(true)}
+ reset(init){this.x=init?Math.random()*W:W+100;this.y=Math.random()*H*0.7;this.w=60+Math.random()*100;this.speed=1+Math.random()*2;}
+ update(){this.x-=this.speed;if(this.x<-150)this.reset(false)}
+ draw(){
+  ctx.fillStyle='rgba(255,255,255,0.8)';
+  ctx.beginPath();ctx.ellipse(this.x,this.y,this.w/2,this.w/4,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,0.4)';ctx.beginPath();ctx.ellipse(this.x-this.w*0.2,this.y-5,this.w/3,this.w/5,0,0,Math.PI*2);ctx.fill();
+ }
+}
+
+// 星星
+class Star{
+ constructor(x){this.x=x||W+50;this.y=H*0.15+Math.random()*H*0.7;this.r=8+Math.random()*8;this.collected=false}
+ update(speed){this.x-=speed;return this.x<-20}
+ draw(){
+  if(this.collected)return;
+  let t=Date.now()*0.002;
+  ctx.fillStyle='#ffd700';ctx.beginPath();
+  for(let i=0;i<5;i++){let a=i*Math.PI*2/5-Math.PI/2;let a2=a+Math.PI/5;ctx.lineTo(this.x+Math.cos(a)*this.r,this.y+Math.sin(a)*this.r);ctx.lineTo(this.x+Math.cos(a2)*this.r*0.4,this.y+Math.sin(a2)*this.r*0.4);}
+  ctx.closePath();ctx.fill();
+  ctx.fillStyle='rgba(255,255,200,0.6)';ctx.beginPath();ctx.arc(this.x,this.y,this.r*1.3,0,Math.PI*2);ctx.fill();
+ }
+}
+
+for(let i=0;i<8;i++)GAME.clouds.push(new Cloud());
+
+// 粒子
+function spawnParticles(x,y,color,n=8){
+ for(let i=0;i<n;i++)GAME.particles.push({x,y,vx:(Math.random()-0.5)*4,vy:(Math.random()-0.5)*4-2,life:1,color});
+}
+
+function startGame(){
+ GAME.running=true;GAME.score=0;GAME.gems=0;GAME.playerY=H/2;GAME.playerVY=0;GAME.speed=2;GAME.frame=0;
+ GAME.stars=[];GAME.particles=[];GAME.clouds.forEach(c=>c.reset(true));
+ document.getElementById('start').style.display='none';
+ document.getElementById('gameover').style.display='none';
+}
+
+function restartGame(){document.getElementById('gameover').style.display='none';startGame();}
+
+function gameOver(){
+ GAME.running=false;spawnParticles(W/2,GAME.playerY,'#fff',20);
+ document.getElementById('gameover').style.display='flex';
+ document.getElementById('finalScore').textContent='⭐ '+GAME.score+' 分';
+ document.getElementById('finalGems').textContent='💎 '+GAME.gems+' 宝石';
+}
+
+function loop(){
+ if(!GAME.running){requestAnimationFrame(loop);return}
+ GAME.frame++;GAME.speed=2+GAME.frame*0.003;
+
+ // 玩家物理
+ if(GAME.holding){GAME.playerVY=-5}else{GAME.playerVY+=0.3}
+ GAME.playerY+=GAME.playerVY;
+ if(GAME.playerY<20){GAME.playerY=20;GAME.playerVY=0}
+ if(GAME.playerY>H-20){GAME.playerY=H-20;GAME.playerVY=0;gameOver()}
+
+ // 背景渐变
+ let bg=ctx.createLinearGradient(0,0,0,H);
+ bg.addColorStop(0,'#1a80c0');bg.addColorStop(0.4,'#40a0e0');bg.addColorStop(0.8,'#80d0ff');bg.addColorStop(1,'#c0e8ff');
+ ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+
+ // 太阳
+ let sunX=W*0.8,sunY=H*0.15;
+ let sg=ctx.createRadialGradient(sunX,sunY,0,sunX,sunY,80);
+ sg.addColorStop(0,'rgba(255,255,200,0.8)');sg.addColorStop(0.5,'rgba(255,200,100,0.2)');sg.addColorStop(1,'transparent');
+ ctx.fillStyle=sg;ctx.fillRect(0,0,W,H);
+
+ // 云朵
+ GAME.clouds.forEach(c=>{c.update();c.draw()});
+
+ // 生星
+ if(GAME.frame%30===0)GAME.stars.push(new Star(W+50));
+
+ // 星星更新
+ for(let i=GAME.stars.length-1;i>=0;i--){
+  if(GAME.stars[i].update(GAME.speed)){GAME.stars.splice(i,1);continue}
+  // 碰撞
+  let s=GAME.stars[i];
+  if(!s.collected&&Math.abs(s.x-W/3)<30&&Math.abs(s.y-GAME.playerY)<40){
+   s.collected=true;GAME.score+=10;GAME.gems++;
+   spawnParticles(s.x,s.y,'#ffd700',12);GAME.stars.splice(i,1);
+  }
+ }
+
+ // 粒子
+ for(let i=GAME.particles.length-1;i>=0;i--){
+  let p=GAME.particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=0.1;p.life-=0.03;
+  if(p.life<=0){GAME.particles.splice(i,1);continue}
+  ctx.fillStyle=`rgba(255,255,255,${p.life})`;ctx.beginPath();ctx.arc(p.x,p.y,3,0,Math.PI*2);ctx.fill();
+ }
+
+ // 玩家
+ let playerX=W/3;
+ // 尾迹
+ for(let i=0;i<3;i++){ctx.fillStyle=`rgba(255,255,255,${0.3-i*0.1})`;ctx.beginPath();ctx.arc(playerX-i*15,GAME.playerY,12-i*3,0,Math.PI*2);ctx.fill();}
+ // 身体
+ ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(playerX,GAME.playerY,14,0,Math.PI*2);ctx.fill();
+ ctx.fillStyle='#1a80c0';ctx.beginPath();ctx.arc(playerX,GAME.playerY,10,0,Math.PI*2);ctx.fill();
+ // 翅膀
+ for(let s of[-1,1]){
+  ctx.fillStyle='#fff';ctx.beginPath();
+  ctx.moveTo(playerX+s*8,GAME.playerY-5);
+  ctx.lineTo(playerX+s*25,GAME.playerY-20+Math.sin(GAME.frame*0.3)*8);
+  ctx.lineTo(playerX+s*20,GAME.playerY);
+  ctx.fill();
+ }
+
+ // UI
+ document.getElementById('score').textContent=GAME.score;
+ document.getElementById('gems').textContent=GAME.gems;
+ if(GAME.score>0&&GAME.score%100<10)document.getElementById('combo').textContent='🔥 连击!';
+
+ requestAnimationFrame(loop);
+}
+
+// 控制
+canvas.addEventListener('mousedown',()=>GAME.holding=true);
+canvas.addEventListener('mouseup',()=>GAME.holding=false);
+canvas.addEventListener('touchstart',e=>{e.preventDefault();GAME.holding=true});
+canvas.addEventListener('touchend',e=>{e.preventDefault();GAME.holding=false});
+document.addEventListener('keydown',e=>{if(e.key===' '||e.key==='ArrowUp')GAME.holding=true});
+document.addEventListener('keyup',e=>{if(e.key===' '||e.key==='ArrowUp')GAME.holding=false});
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
