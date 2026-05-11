@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>游戏音效与氛围工具</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);color:#fff;font-family:Arial,sans-serif;min-height:100vh;padding:20px}
+h1{text-align:center;margin-bottom:20px;font-size:1.5em;background:linear-gradient(90deg,#6c5ce7,#a29bfe);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;max-width:900px;margin:0 auto}
+.card{background:rgba(255,255,255,.08);border-radius:12px;padding:16px;text-align:center;cursor:pointer;transition:all .2s;border:1px solid rgba(255,255,255,.1);position:relative;overflow:hidden}
+.card:hover{background:rgba(255,255,255,.15);transform:translateY(-2px);border-color:#6c5ce7}
+.card:active{transform:scale(.95)}
+.card .icon{font-size:2em;margin-bottom:8px}
+.card .name{font-size:.85em;margin-bottom:4px}
+.card .type{font-size:.7em;color:#888}
+.card.playing{background:rgba(108,92,231,.3);border-color:#6c5ce7;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 rgba(108,92,231,0)}50%{box-shadow:0 0 20px rgba(108,92,231,.4)}}
+.category{margin:20px 0 8px 0;font-size:1.1em;color:#a29bfe;border-bottom:1px solid rgba(162,155,254,.3);padding-bottom:4px}
+.ambient-controls{display:flex;gap:12px;align-items:center;margin:8px 0;flex-wrap:wrap}
+.ambient-controls input[type=range]{flex:1;min-width:80px}
+.ambient-controls button{background:#6c5ce7;color:#fff;border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:.8em}
+.ambient-controls button:hover{background:#5b4cc4}
+.ambient-controls span{font-size:.7em;color:#aaa;min-width:50px;text-align:right}
+footer{text-align:center;margin-top:30px;font-size:.7em;color:#555}
+</style>
+</head>
+<body>
+
+<h1>🎧 游戏音效与氛围工具</h1>
+
+<div class="category">🌧️ 氛围与环境</div>
+<div class="ambient-controls">
+  <button onclick="playAmbient('rain')">🌧️ 雨声</button>
+  <button onclick="playAmbient('wind')">💨 风声</button>
+  <button onclick="playAmbient('forest')">🌲 森林</button>
+  <button onclick="playAmbient('ocean')">🌊 海浪</button>
+  <button onclick="playAmbient('night')">🦗 夜晚</button>
+  <button onclick="playAmbient('fire')">🔥 篝火</button>
+  <button onclick="playAmbient('city')">🏙️ 城市</button>
+  <button onclick="stopAmbient()" style="background:#ff6b6b">⏹ 停止</button>
+  <input type="range" id="ambientVol" min="0" max="100" value="50" oninput="setAmbientVol(this.value)">
+  <span id="volLabel">50%</span>
+</div>
+
+<div class="category">⚔️ 动作与战斗</div>
+<div class="grid" id="actionGrid"></div>
+
+<div class="category">🎮 交互与UI</div>
+<div class="grid" id="uiGrid"></div>
+
+<div class="category">🎵 生成器</div>
+<div class="grid" id="generatorGrid"></div>
+
+<footer>使用 Web Audio API 实时合成 | 无需下载音效文件</footer>
+
+<script>
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let ambientGain = null, ambientSource = null, ambientPlaying = false;
+
+function setAmbientVol(v){
+  if(ambientGain) ambientGain.gain.value = v/100;
+  document.getElementById('volLabel').textContent = v+'%';
+}
+
+// 氛围生成器
+function playAmbient(type){
+  stopAmbient();
+  ambientGain = audioCtx.createGain();
+  ambientGain.gain.value = 0.5;
+  ambientGain.connect(audioCtx.destination);
+
+  const bufferSize = 4096;
+  const node = audioCtx.createScriptProcessor(bufferSize, 1, 1);
+  let phase = 0;
+
+  node.onaudioprocess = function(e){
+    const out = e.outputBuffer.getChannelData(0);
+    for(let i=0;i<bufferSize;i++){
+      phase++;
+      let sample = 0;
+      const t = phase / audioCtx.sampleRate;
+
+      switch(type){
+        case 'rain':
+          sample = (Math.random()-0.5)*0.3 + Math.sin(t*80+Math.sin(t*3)*5)*0.02;
+          sample *= Math.random()>0.7?1:0.3; // 雨滴节奏
+          break;
+        case 'wind':
+          sample = (Math.sin(t*0.5+Math.sin(t*0.1)*3)*0.3 + (Math.random()-0.5)*0.4) * 0.5;
+          break;
+        case 'forest':
+          sample = Math.sin(t*400+Math.sin(t*2)*100)*0.01 + (Math.random()-0.5)*0.1 + Math.sin(t*300)*0.005;
+          break;
+        case 'ocean':
+          sample = Math.sin(t*0.2+Math.sin(t*0.05)*4)*0.4 + (Math.random()-0.5)*0.15;
+          break;
+        case 'night':
+          sample = Math.sin(t*800)*0.005 + Math.sin(t*600)*0.003 + (Math.random()-0.5)*0.05;
+          break;
+        case 'fire':
+          sample = (Math.random()-0.5)*0.5 * Math.random() + Math.sin(t*60)*0.02;
+          break;
+        case 'city':
+          sample = Math.sin(t*200+Math.sin(t*0.3)*50)*0.01 + (Math.random()-0.5)*0.08 + Math.sin(t*0.1)*0.1;
+          break;
+      }
+      out[i] = Math.max(-1,Math.min(1,sample));
+    }
+  };
+  node.connect(ambientGain);
+  ambientSource = node;
+  ambientPlaying = true;
+}
+
+function stopAmbient(){
+  if(ambientSource){ ambientSource.disconnect(); ambientSource = null; }
+  if(ambientGain){ ambientGain.disconnect(); ambientGain = null; }
+  ambientPlaying = false;
+}
+
+// 音效播放
+function playSFX(type){
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain); gain.connect(audioCtx.destination);
+
+  const now = audioCtx.currentTime;
+  switch(type){
+    case 'sword': osc.type='sawtooth'; osc.frequency.setValueAtTime(800,now); osc.frequency.exponentialRampToValueAtTime(200,now+0.15); gain.gain.setValueAtTime(0.4,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.2); osc.start(now); osc.stop(now+0.2); break;
+    case 'hit': osc.type='square'; osc.frequency.setValueAtTime(300,now); osc.frequency.exponentialRampToValueAtTime(80,now+0.1); gain.gain.setValueAtTime(0.5,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.15); osc.start(now); osc.stop(now+0.15); break;
+    case 'shoot': osc.type='square'; osc.frequency.setValueAtTime(1000,now); osc.frequency.exponentialRampToValueAtTime(150,now+0.05); gain.gain.setValueAtTime(0.3,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.1); osc.start(now); osc.stop(now+0.1); break;
+    case 'jump': osc.type='sine'; osc.frequency.setValueAtTime(300,now); osc.frequency.exponentialRampToValueAtTime(600,now+0.1); gain.gain.setValueAtTime(0.2,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.2); osc.start(now); osc.stop(now+0.2); break;
+    case 'magic': osc.type='triangle'; osc.frequency.setValueAtTime(600,now); osc.frequency.setValueAtTime(1200,now+0.05); osc.frequency.setValueAtTime(1800,now+0.1); osc.frequency.setValueAtTime(600,now+0.2); gain.gain.setValueAtTime(0.3,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.4); osc.start(now); osc.stop(now+0.4); break;
+    case 'click': osc.type='sine'; osc.frequency.setValueAtTime(800,now); osc.frequency.exponentialRampToValueAtTime(1200,now+0.03); gain.gain.setValueAtTime(0.2,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.06); osc.start(now); osc.stop(now+0.06); break;
+    case 'confirm': osc.type='sine'; osc.frequency.setValueAtTime(523,now); osc.frequency.setValueAtTime(659,now+0.08); osc.frequency.setValueAtTime(784,now+0.16); gain.gain.setValueAtTime(0.2,now); gain.gain.setValueAtTime(0.2,now+0.16); gain.gain.exponentialRampToValueAtTime(0.01,now+0.3); osc.start(now); osc.stop(now+0.3); break;
+    case 'error': osc.type='sawtooth'; osc.frequency.setValueAtTime(200,now); osc.frequency.setValueAtTime(150,now+0.1); gain.gain.setValueAtTime(0.2,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.2); osc.start(now); osc.stop(now+0.2); break;
+    case 'coin': osc.type='square'; osc.frequency.setValueAtTime(988,now); osc.frequency.setValueAtTime(1319,now+0.06); gain.gain.setValueAtTime(0.15,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.15); osc.start(now); osc.stop(now+0.15); break;
+    case 'explosion': osc.type='sawtooth'; osc.frequency.setValueAtTime(150,now); osc.frequency.exponentialRampToValueAtTime(30,now+0.5); gain.gain.setValueAtTime(0.6,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.8); osc.start(now); osc.stop(now+0.8);
+      const noise = audioCtx.createOscillator(); const ng = audioCtx.createGain(); noise.type='sawtooth'; noise.frequency.setValueAtTime(100,now); noise.frequency.exponentialRampToValueAtTime(20,now+0.3); ng.gain.setValueAtTime(0.4,now); ng.gain.exponentialRampToValueAtTime(0.01,now+0.5); noise.connect(ng); ng.connect(audioCtx.destination); noise.start(now); noise.stop(now+0.5); break;
+    case 'powerup': osc.type='sine'; osc.frequency.setValueAtTime(400,now); osc.frequency.linearRampToValueAtTime(1600,now+0.4); gain.gain.setValueAtTime(0.2,now); gain.gain.setValueAtTime(0.3,now+0.2); gain.gain.exponentialRampToValueAtTime(0.01,now+0.5); osc.start(now); osc.stop(now+0.5); break;
+  }
+}
+
+// 音效卡片
+const actionSounds = [
+  {icon:'⚔️',name:'挥砍',type:'sword'},{icon:'💥',name:'命中',type:'hit'},
+  {icon:'🏹',name:'射击',type:'shoot'},{icon:'🦘',name:'跳跃',type:'jump'},
+  {icon:'✨',name:'魔法',type:'magic'},{icon:'💣',name:'爆炸',type:'explosion'},
+  {icon:'⚡',name:'蓄力',type:'powerup'},
+];
+
+const uiSounds = [
+  {icon:'👆',name:'点击',type:'click'},{icon:'✅',name:'确认',type:'confirm'},
+  {icon:'❌',name:'错误',type:'error'},{icon:'🪙',name:'金币',type:'coin'},
+];
+
+const generators = [
+  {icon:'🎹',name:'BFXR音效',url:'https://www.bfxr.net/'},
+  {icon:'🕹️',name:'ChipTone',url:'https://sfbgames.itch.io/chiptone'},
+  {icon:'🎛️',name:'LabChirp',url:'https://labbed.itch.io/labchirp'},
+  {icon:'🎵',name:'Suno AI',url:'https://suno.com/'},
+];
+
+function renderGrid(container, items, isSFX){
+  const el = document.getElementById(container);
+  items.forEach(item=>{
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.innerHTML = `<div class="icon">${item.icon}</div><div class="name">${item.name}</div><div class="type">${isSFX?'点击试听':'外部工具 →'}</div>`;
+    div.onclick = ()=>{
+      if(isSFX){
+        div.classList.add('playing');
+        setTimeout(()=>div.classList.remove('playing'),200);
+        playSFX(item.type);
+      } else {
+        window.open(item.url,'_blank');
+      }
+    };
+    el.appendChild(div);
+  });
+}
+
+renderGrid('actionGrid', actionSounds, true);
+renderGrid('uiGrid', uiSounds, true);
+renderGrid('generatorGrid', generators, false);
+</script>
+</body>
+</html>
