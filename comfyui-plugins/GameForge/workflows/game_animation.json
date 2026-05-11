@@ -1,0 +1,14 @@
+{
+  "last_node_id": 7,
+  "nodes": [
+    {"id":1,"type":"CLIPTextEncode","pos":[50,50],"widgets_values":["smooth camera panning, rotating game asset showcase, 360 degree view, professional lighting, 3D render quality"],"title":"动画Prompt"},
+    {"id":2,"type":"LoadImage","pos":[50,300],"widgets_values":["game_asset.png"],"title":"起始帧"},
+    {"id":3,"type":"AnimateDiffLoader","pos":[350,50],"widgets_values":["mm_sd15_v2.safetensors",16,1,8],"title":"AnimateDiff"},
+    {"id":4,"type":"KSampler","pos":[650,50],"widgets_values":[156680208700286,"randomize",16,7,"euler_ancestral","normal",0.85]},
+    {"id":5,"type":"AnimateDiffCombine","pos":[350,300],"widgets_values":[16,8,"mp4"]},
+    {"id":6,"type":"RIFE_VFI","pos":[650,300],"widgets_values":[3],"title":"补帧3x"},
+    {"id":7,"type":"VHS_VideoCombine","pos":[50,500],"widgets_values":[24,"game_animation"]}
+  ],
+  "links":[[1,0,3,1],[2,0,4,1],[3,0,4,0],[4,0,5,0],[5,0,6,0],[6,0,7,0]],
+  "groups":[{"title":"🎬 游戏资产动画展示","bounding":[30,20,720,400],"color":"#8a3f98"}]
+}

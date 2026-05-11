@@ -1,0 +1,15 @@
+{
+  "last_node_id": 8,
+  "nodes": [
+    {"id":1,"type":"CLIPTextEncode","pos":[50,50],"widgets_values":["game character, warrior, futuristic armor, full body, front view, white background, concept art, 3D model reference"],"title":"角色Prompt"},
+    {"id":2,"type":"CheckpointLoaderSimple","pos":[50,200],"widgets_values":["sd_xl_base_1.0.safetensors"]},
+    {"id":3,"type":"KSampler","pos":[350,50],"widgets_values":[156680208700286,"randomize",20,7.5,"euler","normal",1]},
+    {"id":4,"type":"VAEDecode","pos":[650,50]},
+    {"id":5,"type":"ImageBackgroundRemoval","pos":[650,200],"title":"去背景"},
+    {"id":6,"type":"TripoSR_MeshGenerator","pos":[350,350],"widgets_values":[1024,"glb"],"title":"TripoSR 3D重建"},
+    {"id":7,"type":"PreviewImage","pos":[650,350],"title":"预览"},
+    {"id":8,"type":"SaveMesh","pos":[50,500],"widgets_values":["character_3d"],"title":"保存3D模型"}
+  ],
+  "links":[[1,0,3,1],[2,0,3,0],[3,0,4,0],[4,0,5,0],[5,0,6,0],[6,0,8,0],[8,0,7,0]],
+  "groups":[{"title":"🎮 游戏角色3D生成","bounding":[30,20,720,500],"color":"#3f7898"}]
+}

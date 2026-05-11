@@ -1,0 +1,13 @@
+{
+  "last_node_id": 6,
+  "nodes": [
+    {"id":1,"type":"CLIPTextEncode","pos":[50,50],"widgets_values":["seamless PBR material, ancient stone wall texture, tileable, diffuse map, high quality, game ready, unreal engine"],"title":"材质Prompt"},
+    {"id":2,"type":"CheckpointLoaderSimple","pos":[50,200],"widgets_values":["sd_xl_base_1.0.safetensors"]},
+    {"id":3,"type":"KSampler","pos":[350,50],"widgets_values":[42,"fixed",4,12,"dpmpp_2m","karras",1]},
+    {"id":4,"type":"VAEDecode","pos":[650,50]},
+    {"id":5,"type":"ImageToPBR","pos":[350,300],"widgets_values":[2048,true,true],"title":"生成全套PBR"},
+    {"id":6,"type":"SavePBRMaterial","pos":[50,400],"widgets_values":["pbr_material"]}
+  ],
+  "links":[[1,0,3,1],[2,0,3,0],[3,0,4,0],[4,0,5,0],[5,0,6,0]],
+  "groups":[{"title":"🎨 PBR材质生成","bounding":[30,20,720,350],"color":"#988a3f"}]
+}
