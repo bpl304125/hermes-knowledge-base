@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>魔法花园 — 抖音小游戏</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#000;overflow:hidden;touch-action:none}canvas{display:block}
+#ui{position:fixed;top:10px;left:10px;right:10px;z-index:10;display:flex;justify-content:space-between;pointer-events:none;font:bold 14px Arial}
+#ui>div{background:rgba(0,0,0,.5);color:#fff;padding:5px 12px;border-radius:15px}
+#start,#go{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center}
+#start>div,#go>div{padding:28px 36px;border-radius:20px;text-align:center;color:#fff}
+#start>div{background:linear-gradient(180deg,#4a2060,#1a0830);border:2px solid #a6f}
+#go>div{background:linear-gradient(180deg,#4a2060,#1a0830);border:2px solid #f44;display:none}
+#start h1{font-size:2em;margin-bottom:8px}#start p{color:#daf;font-size:13px}
+#start button{background:#a6f;color:#fff;border:none;border-radius:10px;padding:10px 30px;font:bold 16px Arial;cursor:pointer;margin-top:10px}
+#go button{background:#f44;color:#fff;border:none;border-radius:10px;padding:10px 28px;font:bold 16px Arial;cursor:pointer;margin-top:10px}
+.tab{position:fixed;top:10px;right:10px;z-index:25;display:flex;gap:4px}
+.tab button{background:rgba(0,0,0,.5);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer}
+.tab button.sel{border-color:#a6f;color:#a6f}
+</style></head>
+<body>
+<div class="tab">
+<button class="sel" onclick="switchMode('magic')">🔮 魔法</button>
+<button onclick="switchMode('garden')">🌿 花园</button>
+</div>
+<div id="ui"><div>⭐ <span id="score">0</span></div><div id="combo"></div><div>❤️ <span id="hp">3</span></div></div>
+<div id="start"><div>
+<h1 id="gameTitle">🔮 魔法试炼</h1><p id="gameDesc">绘制符文，释放魔法！</p>
+<button onclick="startGame()">🔮 开始</button>
+</div></div>
+<div id="go"><div id="goPanel">
+<h2 id="goTitle">💀 试炼失败</h2><div id="goScore" style="font-size:1.3em;margin:8px 0"></div>
+<button onclick="restartGame()">🔄 再来</button>
+</div></div>
+
+<script>
+const canvas=document.createElement('canvas');document.body.appendChild(canvas);
+const ctx=canvas.getContext('2d');
+let W,H,G={running:false,score:0,hp:3,rune:'',targetRune:'',enemies:[],spells:[],particles:[],plants:[],bugs:[],mode:'magic',frame:0,timer:0};
+const RUNES=['△','○','□','☆','◇','⬡'];
+
+function resize(){W=canvas.width=innerWidth;H=canvas.height=innerHeight}resize();window.addEventListener('resize',resize);
+
+function switchMode(m){
+ G.mode=m;
+ document.querySelectorAll('.tab button').forEach(b=>b.classList.remove('sel'));
+ document.querySelector(`.tab button:nth-child(${m==='magic'?1:2})`).classList.add('sel');
+ if(m==='magic'){
+  document.getElementById('gameTitle').textContent='🔮 魔法试炼';
+  document.getElementById('gameDesc').textContent='点击符文按钮释放魔法消灭敌人！';
+  document.getElementById('goTitle').textContent='💀 试炼失败';
+ }else{
+  document.getElementById('gameTitle').textContent='🌿 精灵花园';
+  document.getElementById('gameDesc').textContent='点击害虫保护你的花园！';
+  document.getElementById('goTitle').textContent='🌿 花园枯萎';
+ }
+}
+
+function initMagic(){
+ G.targetRune=RUNES[Math.floor(Math.random()*RUNES.length)];
+ G.enemies=[];G.spells=[];
+ for(let i=0;i<5;i++)spawnEnemy();
+}
+function spawnEnemy(){
+ let e={x:W+50,y:50+Math.random()*(H-120),hp:1+Math.floor(Math.random()*2),rune:RUNES[Math.floor(Math.random()*RUNES.length)],speed:1+Math.random()*2};
+ G.enemies.push(e);
+}
+
+function initGarden(){
+ G.plants=[];G.bugs=[];
+ for(let i=0;i<6;i++)G.plants.push({x:W*0.1+i*W*0.13,y:H*0.7,w:30,h:40,hp:3,color:`hsl(${120+Math.random()*40},60%,${30+Math.random()*30}%)`});
+ for(let i=0;i<8;i++)G.bugs.push({x:Math.random()*W,y:-30-Math.random()*100,speed:0.5+Math.random()*1.5,size:8+Math.random()*6,target:Math.floor(Math.random()*6)});
+}
+
+function startGame(){
+ G.running=true;G.score=0;G.hp=3;G.frame=0;G.particles=[];
+ document.getElementById('start').style.display='none';document.getElementById('go').style.display='none';
+ if(G.mode==='magic')initMagic();else initGarden();
+}
+
+function restartGame(){startGame();}
+
+function gameOver(){
+ G.running=false;
+ document.getElementById('go').style.display='flex';document.getElementById('goPanel').style.display='block';
+ document.getElementById('goScore').textContent='⭐ '+G.score+' 分';
+}
+
+function castSpell(rune){
+ if(!G.running||G.mode!=='magic')return;
+ G.rune=rune;
+ let hit=false;
+ for(let i=G.enemies.length-1;i>=0;i--){
+  if(G.enemies[i].rune===rune&&G.enemies[i].x<W*0.4){
+   for(let j=0;j<15;j++)G.particles.push({x:G.enemies[i].x,y:G.enemies[i].y,vx:(Math.random()-0.5)*5,vy:(Math.random()-0.5)*5-2,life:1,color:'#f0f'});
+   G.enemies.splice(i,1);G.score+=10;hit=true;
+  }
+ }
+ if(hit){spawnEnemy();spawnEnemy()}else G.score=Math.max(0,G.score-5);
+ document.getElementById('score').textContent=G.score;
+}
+
+function draw(){
+ ctx.clearRect(0,0,W,H);
+
+ if(G.mode==='magic'){
+  // 暗紫色背景
+  let bg=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,W);
+  bg.addColorStop(0,'#2a1040');bg.addColorStop(1,'#0a0410');
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  // 星星
+  for(let i=0;i<50;i++){
+   let x=(i*W/50+G.frame*0.5)%W,y=Math.sin(i*7+G.frame*0.03)*H*0.3+H*0.3;
+   ctx.fillStyle='rgba(255,255,255,0.3)';ctx.beginPath();ctx.arc(x,y,1.5,0,Math.PI*2);ctx.fill();
+  }
+  // 敌人
+  G.enemies.forEach(e=>{
+   e.x-=e.speed;if(e.x<-30){G.hp--;if(G.hp<=0)gameOver();e.x=W+50;e.y=50+Math.random()*(H-120);}
+   // 敌人身体
+   ctx.fillStyle='rgba(255,50,100,0.8)';ctx.beginPath();ctx.arc(e.x,e.y,18,0,Math.PI*2);ctx.fill();
+   ctx.fillStyle='rgba(255,100,150,0.4)';ctx.beginPath();ctx.arc(e.x,e.y,22,0,Math.PI*2);ctx.fill();
+   // 符文
+   ctx.fillStyle='#fff';ctx.font='bold 16px Arial';ctx.textAlign='center';ctx.fillText(e.rune,e.x,e.y+6);
+  });
+  // 魔法粒子
+ }else{
+  // 绿色背景
+  let bg=ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0,'#80d060');bg.addColorStop(0.5,'#a0e880');bg.addColorStop(1,'#60a040');
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  // 云
+  ctx.fillStyle='rgba(255,255,255,0.6)';ctx.beginPath();ctx.ellipse(W*0.3,H*0.15,80,25,0,0,Math.PI*2);ctx.fill();
+  // 太阳
+  let sg=ctx.createRadialGradient(W*0.8,H*0.2,0,W*0.8,H*0.2,60);
+  sg.addColorStop(0,'rgba(255,255,200,0.9)');sg.addColorStop(1,'transparent');
+  ctx.fillStyle=sg;ctx.fillRect(0,0,W,H);
+  // 植物
+  G.plants.forEach(p=>{
+   ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,p.w,p.h);
+   ctx.fillStyle='#4a8';ctx.beginPath();ctx.arc(p.x+p.w/2,p.y,p.w*0.6,0,Math.PI);ctx.fill();
+  });
+  // 害虫
+  G.bugs.forEach(b=>{
+   b.y+=b.speed;b.x+=Math.sin(b.y*0.05+G.frame*0.1)*2;
+   if(b.y>H*0.65&&b.y<H*0.7+G.plants[0].h&&b.target<G.plants.length){
+    G.plants[b.target].hp-=0.02;
+    if(G.plants[b.target].hp<=0)gameOver();
+   }
+   if(b.y>H+30){b.y=-30;b.x=Math.random()*W;b.target=Math.floor(Math.random()*6)}
+   ctx.fillStyle='#333';ctx.beginPath();ctx.arc(b.x,b.y,b.size,0,Math.PI*2);ctx.fill();
+   ctx.fillStyle='#f44';ctx.beginPath();ctx.arc(b.x-2,b.y-2,3,0,Math.PI*2);ctx.fill();
+   ctx.beginPath();ctx.arc(b.x+2,b.y-2,3,0,Math.PI*2);ctx.fill();
+  });
+ }
+
+ // 粒子
+ for(let i=G.particles.length-1;i>=0;i--){
+  let p=G.particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=0.1;p.life-=0.03;
+  if(p.life<=0){G.particles.splice(i,1);continue}
+  ctx.fillStyle=`rgba(${p.color},${p.life})`;ctx.beginPath();ctx.arc(p.x,p.y,3,0,Math.PI*2);ctx.fill();
+ }
+
+ document.getElementById('score').textContent=G.score;
+ document.getElementById('hp').textContent='❤️'.repeat(G.hp);
+ if(G.running)G.frame++;
+ requestAnimationFrame(draw);
+}
+
+// 魔法符文按钮
+const runeBar=document.createElement('div');
+runeBar.style.cssText='position:fixed;bottom:10px;left:50%;transform:translateX(-50%);z-index:25;display:flex;gap:8px';
+RUNES.forEach(r=>{
+ let b=document.createElement('button');
+ b.textContent=r;b.style.cssText='width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;border:2px solid #a6f;font-size:18px;cursor:pointer';
+ b.onclick=()=>castSpell(r);
+ b.onpointerdown=e=>e.stopPropagation();
+ runeBar.appendChild(b);
+});
+document.body.appendChild(runeBar);
+
+// 花园点击杀虫
+canvas.addEventListener('click',e=>{
+ if(!G.running||G.mode!=='garden')return;
+ let mx=e.clientX,my=e.clientY;
+ for(let i=G.bugs.length-1;i>=0;i--){
+  let b=G.bugs[i];
+  if(Math.abs(mx-b.x)<25&&Math.abs(my-b.y)<25){
+   for(let j=0;j<10;j++)G.particles.push({x:b.x,y:b.y,vx:(Math.random()-0.5)*4,vy:(Math.random()-0.5)*4-3,life:1,color:'#0f0'});
+   G.bugs.splice(i,1);G.score+=5;
+   G.bugs.push({x:Math.random()*W,y:-30,speed:0.5+Math.random()*1.5,size:8+Math.random()*6,target:Math.floor(Math.random()*6)});
+  }
+ }
+ document.getElementById('score').textContent=G.score;
+});
+
+switchMode('magic');draw();
+</script>
+</body>
+</html>
