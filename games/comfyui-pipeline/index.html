@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>ComfyUI 游戏资产管线 — 交互式节点图</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a14;color:#fff;font:14px Arial;overflow:hidden}
+canvas{display:block}
+#info{position:fixed;top:10px;left:10px;z-index:10;background:rgba(0,0,0,.8);padding:8px 14px;border-radius:8px;font-size:12px;color:#aaa;border:1px solid rgba(255,255,255,.1)}
+#info b{color:#0ff}
+#sidebar{position:fixed;right:10px;top:50%;transform:translateY(-50%);z-index:10;display:flex;flex-direction:column;gap:6px}
+#sidebar button{background:rgba(0,0,30,.9);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:10px 16px;cursor:pointer;font-size:13px;text-align:left;transition:.2s}
+#sidebar button:hover{background:rgba(0,255,255,.2);border-color:#0ff}
+#sidebar button.sel{border-color:#0ff;background:rgba(0,255,255,.15)}
+#output{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);z-index:10;background:rgba(0,0,0,.8);padding:10px 20px;border-radius:8px;font-size:13px;color:#0f0;text-align:center;border:1px solid rgba(255,255,255,.1)}
+</style></head>
+<body>
+<div id="info">🎮 <b>ComfyUI GameForge</b> — 游戏资产生成管线 | 点击节点查看详情 | 拖拽画布移动 | 滚轮缩放</div>
+<div id="sidebar">
+  <button class="sel" onclick="showPipeline('character')">🎬 角色3D管线</button>
+  <button onclick="showPipeline('animation')">🏃 动画管线</button>
+  <button onclick="showPipeline('bgm')">🎵 BGM管线</button>
+  <button onclick="showPipeline('sfx')">🔊 音效管线</button>
+  <button onclick="showPipeline('pbr')">🎨 PBR材质</button>
+  <button onclick="showPipeline('anime')">🎞 动漫帧管线</button>
+</div>
+<div id="output"></div>
+
+<script>
+const canvas=document.createElement('canvas');
+document.body.appendChild(canvas);
+const ctx=canvas.getContext('2d');
+let W,H,offsetX=0,offsetY=0,zoom=0.8,selectedNode=null,dragging=false,dragX,dragY;
+function resize(){W=canvas.width=innerWidth;H=canvas.height=innerHeight}
+resize();window.addEventListener('resize',resize);
+
+let currentPipeline='character';
+let animTime=0,activeNodes=[],connections=[],particles=[];
+
+// 节点定义
+const NODE_DEFS={
+  character:[
+    {id:1,x:100,y:200,w:180,h:70,color:'#3a6',label:'📝 CLIP Text Encode',desc:'游戏角色Prompt:\n"warrior,futuristic armor,\nfull body,front view"'},
+    {id:2,x:350,y:200,w:180,h:70,color:'#46a',label:'🧠 SDXL Checkpoint',desc:'加载动漫模型\nAnythingV5/Counterfeit',output:'潜在空间'},
+    {id:3,x:600,y:200,w:180,h:70,color:'#a4a',label:'🎯 KSampler',desc:'采样器\nSteps:25 CFG:7\nEuler Ancestral',input:'噪声+Prompt'},
+    {id:4,x:350,y:350,w:180,h:70,color:'#8a3',label:'🖼️ VAE Decode',desc:'解码潜在空间→图像\nVAE: kl-f8-anime2'},
+    {id:5,x:600,y:350,w:180,h:70,color:'#f84',label:'✂️ Remove BG',desc:'去背景\nRMBG-1.4模型'},
+    {id:6,x:350,y:500,w:180,h:70,color:'#08f',label:'🧊 TripoSR 3D',desc:'图像→3D模型\n多视角重建\n输出:GLB/FBX',input:'白底角色图'},
+    {id:7,x:600,y:500,w:180,h:70,color:'#4c8',label:'💾 Save Mesh',desc:'保存3D模型\n→ Blender精修\n→ 导入Godot'},
+  ],
+  animation:[
+    {id:1,x:100,y:200,w:180,h:70,color:'#3a6',label:'🖼️ Load Image',desc:'起始帧图片\n角色概念图/游戏截图'},
+    {id:2,x:350,y:200,w:180,h:70,color:'#a4a',label:'🎬 AnimateDiff',desc:'运动模块\nmm_sd15_v2\nContext:16帧'},
+    {id:3,x:600,y:200,w:180,h:70,color:'#46a',label:'🎯 ControlNet',desc:'OpenPose骨骼控制\n保持角色一致性'},
+    {id:4,x:350,y:350,w:180,h:70,color:'#8a3',label:'⚙️ KSampler',desc:'16帧动画采样\nDenoise:0.85'},
+    {id:5,x:600,y:350,w:180,h:70,color:'#f84',label:'🎥 Frame Interp',desc:'RIFE补帧\n8fps→24fps\n3倍插帧'},
+    {id:6,x:350,y:500,w:180,h:70,color:'#08f',label:'📦 Video Combine',desc:'合成MP4\n24fps输出\n→ 导入游戏引擎'},
+  ],
+  bgm:[
+    {id:1,x:100,y:250,w:180,h:70,color:'#3a6',label:'📝 BGM Prompt',desc:'"cyberpunk electronic,\ndark synthwave,120bpm,\ncinematic,instrumental"'},
+    {id:2,x:350,y:250,w:180,h:70,color:'#a4a',label:'🎵 Suno API',desc:'AI音乐生成\n风格预设6种\n时长:60-300秒'},
+    {id:3,x:600,y:250,w:180,h:70,color:'#8a3',label:'✂️ Audacity',desc:'音频编辑\n无缝循环\n淡入淡出处理'},
+    {id:4,x:350,y:400,w:180,h:70,color:'#08f',label:'📦 OGG Export',desc:'压缩OGG q5\n→ AudioManager\n→ Godot播放'},
+  ],
+  sfx:[
+    {id:1,x:100,y:200,w:180,h:70,color:'#3a6',label:'📝 SFX Prompt',desc:'"heavy impact punch\nlow thud,game sfx"'},
+    {id:2,x:350,y:200,w:180,h:70,color:'#a4a',label:'🔊 Stable Audio',desc:'AI音效生成\n时长:0.5-90秒\n文本→WAV'},
+    {id:3,x:100,y:350,w:180,h:70,color:'#46a',label:'🎙️ ElevenLabs',desc:'AI配音\n5种角色音色\n文本→MP3'},
+    {id:4,x:350,y:350,w:180,h:70,color:'#8a3',label:'📦 Batch SFX',desc:'批量音效生成\nJSON→多个WAV\n一次性产出'},
+  ],
+  pbr:[
+    {id:1,x:100,y:250,w:180,h:70,color:'#3a6',label:'📝 Material Prompt',desc:'"seamless stone wall,\nPBR material,tileable,\ngame ready,2K"'},
+    {id:2,x:350,y:250,w:180,h:70,color:'#a4a',label:'🎨 SDXL + ControlNet',desc:'Tile ControlNet\n无缝纹理生成\n保持边缘连续'},
+    {id:3,x:600,y:250,w:180,h:70,color:'#8a3',label:'🔄 ImageToPBR',desc:'生成全套PBR:\nBaseColor+Normal+\nRoughness+Metallic+AO'},
+    {id:4,x:350,y:400,w:180,h:70,color:'#08f',label:'💾 Export PBR Set',desc:'2048×2048 PNG\n→ Godot StandardMaterial\n→ 应用到建筑模型'},
+  ],
+  anime:[
+    {id:1,x:100,y:200,w:180,h:70,color:'#3a6',label:'📜 剧本Prompt',desc:'15幕分镜文本\n每幕:场景+角色+对话\n→ 批量生成Prompt'},
+    {id:2,x:350,y:200,w:180,h:70,color:'#a4a',label:'🖼️ SDXL Anime',desc:'AnythingV5模型\n6个场景Prompt\n批量队列生成'},
+    {id:3,x:600,y:200,w:180,h:70,color:'#46a',label:'🔧 ControlNet',desc:'Lineart控制\n保持线稿风格\nCanny控制构图'},
+    {id:4,x:350,y:350,w:180,h:70,color:'#8a3',label:'🎬 AnimateDiff',desc:'关键帧→中间帧\n16帧动画片段\n时域一致性'},
+    {id:5,x:600,y:350,w:180,h:70,color:'#f84',label:'📦 Video Combine',desc:'合成15分钟动漫\n24fps+配音+BGM'},
+  ]
+};
+
+function getConnections(pipeline){
+  const maps={
+    character:[[1,2],[2,3],[3,4],[4,5],[5,6],[6,7]],
+    animation:[[1,2],[2,3],[3,4],[4,5],[5,6]],
+    bgm:[[1,2],[2,3],[3,4]],
+    sfx:[[1,2],[3,4]],
+    pbr:[[1,2],[2,3],[3,4]],
+    anime:[[1,2],[2,3],[3,4],[4,5]],
+  };
+  return maps[pipeline]||[];
+}
+
+function showPipeline(name){
+  currentPipeline=name;
+  activeNodes=NODE_DEFS[name]||[];
+  connections=getConnections(name);
+  selectedNode=null;
+  document.querySelectorAll('#sidebar button').forEach(b=>b.classList.remove('sel'));
+  document.querySelector(`[onclick="showPipeline('${name}')"]`).classList.add('sel');
+  particles=[];
+  // 粒子动画
+  for(let i=0;i<30;i++)particles.push({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-0.5)*2,vy:(Math.random()-0.5)*2,life:1});
+}
+
+function drawNode(node,ox,oy,scale){
+  let x=node.x*scale+ox,y=node.y*scale+oy,w=node.w*scale,h=node.h*scale;
+  let isSel=selectedNode===node;
+
+  // 渐变背景
+  let g=ctx.createLinearGradient(x,y,x,y+h);
+  g.addColorStop(0,node.color+'dd');g.addColorStop(1,node.color+'44');
+  ctx.fillStyle=g;ctx.fillRect(x,y,w,h);
+
+  // 边框
+  ctx.strokeStyle=isSel?'#fff':node.color;ctx.lineWidth=isSel?3:1.5;
+  ctx.strokeRect(x,y,w,h);
+
+  // 标签
+  ctx.fillStyle='#fff';ctx.font=`bold ${14*scale}px Arial`;ctx.textAlign='center';
+  ctx.fillText(node.label,x+w/2,y+22*scale);
+
+  // 输入输出点
+  if(node.input){ctx.fillStyle='#0f0';ctx.beginPath();ctx.arc(x,y+h/2,6*scale,0,Math.PI*2);ctx.fill();}
+  if(node.output){ctx.fillStyle='#f80';ctx.beginPath();ctx.arc(x+w,y+h/2,6*scale,0,Math.PI*2);ctx.fill();}
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  // 背景网格
+  ctx.strokeStyle='rgba(255,255,255,0.03)';ctx.lineWidth=0.5;
+  for(let x=offsetX%40;x<W;x+=40)ctx.strokeRect(x,0,0,H);
+  for(let y=offsetY%40;y<H;y+=40)ctx.strokeRect(0,y,W,0);
+
+  // 连接线
+  for(let [from,to] of connections){
+    let fn=activeNodes.find(n=>n.id===from),tn=activeNodes.find(n=>n.id===to);
+    if(!fn||!tn)continue;
+    let x1=(fn.x+fn.w)*zoom+offsetX,y1=(fn.y+fn.h/2)*zoom+offsetY;
+    let x2=tn.x*zoom+offsetX,y2=(tn.y+tn.h/2)*zoom+offsetY;
+    let cp=Math.abs(x2-x1)*0.5;
+    ctx.strokeStyle=selectedNode&&(selectedNode.id===from||selectedNode.id===to)?'#0ff':'rgba(255,255,255,0.3)';
+    ctx.lineWidth=selectedNode&&(selectedNode.id===from||selectedNode.id===to)?2:1;
+    ctx.beginPath();ctx.moveTo(x1,y1);ctx.bezierCurveTo(x1+cp,y1,x2-cp,y2,x2,y2);ctx.stroke();
+  }
+
+  // 节点
+  for(let n of activeNodes)drawNode(n,offsetX,offsetY,zoom);
+
+  // 流动粒子
+  for(let p of particles){
+    p.x+=p.vx;p.y+=p.vy;p.life-=0.005;
+    ctx.fillStyle=`rgba(0,255,255,${p.life})`;ctx.beginPath();ctx.arc(p.x,p.y,2,0,Math.PI*2);ctx.fill();
+    if(p.life<=0){p.x=Math.random()*W;p.y=Math.random()*H;p.life=1;}
+  }
+
+  // 选中节点详情
+  if(selectedNode){
+    let detail=`${selectedNode.label}\n\n${selectedNode.desc}`;
+    document.getElementById('output').textContent=detail;
+  }else{
+    let n=activeNodes.length,c=connections.length;
+    document.getElementById('output').textContent=`${n}个节点 · ${c}条连接 · 点击节点查看详情`;
+  }
+}
+
+canvas.addEventListener('click',e=>{
+  let mx=(e.clientX-offsetX)/zoom,my=(e.clientY-offsetY)/zoom;
+  selectedNode=null;
+  for(let n of activeNodes){
+    if(mx>=n.x&&mx<=n.x+n.w&&my>=n.y&&my<=n.y+n.h){selectedNode=n;break;}
+  }
+});
+
+canvas.addEventListener('mousedown',e=>{dragging=true;dragX=e.clientX-offsetX;dragY=e.clientY-offsetY});
+canvas.addEventListener('mousemove',e=>{if(dragging){offsetX=e.clientX-dragX;offsetY=e.clientY-dragY}});
+canvas.addEventListener('mouseup',()=>dragging=false);
+canvas.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(0.3,Math.min(2,zoom-e.deltaY*0.001))});
+
+function loop(){
+  animTime+=0.016;draw();requestAnimationFrame(loop);
+}
+
+showPipeline('character');
+requestAnimationFrame(loop);
+resize();
+</script>
+</body>
+</html>
