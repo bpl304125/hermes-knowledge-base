@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>3D 动作动画 & 音频引擎 NeoEngine</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;overflow:hidden;touch-action:none;}
+canvas{display:block}
+#ui{position:fixed;bottom:0;left:0;right:0;z-index:10;padding:12px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+#ui button{background:rgba(0,0,0,.7);color:#0ff;border:1px solid #0ff;border-radius:8px;padding:10px 18px;font-size:14px;cursor:pointer;transition:all .2s}
+#ui button:hover{background:rgba(0,255,255,.2)}
+#ui button.playing{background:rgba(0,255,255,.3);border-color:#fff;color:#fff}
+#info{position:fixed;top:12px;left:12px;color:#888;font:12px monospace;z-index:10}
+#title{position:fixed;top:12px;right:12px;color:#0ff;font:bold 16px Arial;text-shadow:0 0 10px #0ff;z-index:10}
+</style>
+</head>
+<body>
+
+<div id="title">🎬 NeoEngine — 动画 & 音频引擎</div>
+<div id="info"></div>
+<div id="ui">
+  <button onclick="setAnim('idle')" id="btn-idle">🧍 待机</button>
+  <button onclick="setAnim('walk')" id="btn-walk">🚶 行走</button>
+  <button onclick="setAnim('run')" id="btn-run">🏃 奔跑</button>
+  <button onclick="setAnim('jump')" id="btn-jump">🦘 跳跃</button>
+  <button onclick="setAnim('attack')" id="btn-attack">⚔️ 攻击</button>
+  <button onclick="setAnim('hit')" id="btn-hit">💥 受击</button>
+  <button onclick="setAnim('dance')" id="btn-dance">💃 舞蹈</button>
+  <button onclick="toggleMusic()" id="btn-music">🎵 BGM</button>
+  <button onclick="playSFX('impact')">💢 打击音效</button>
+  <button onclick="playSFX('magic')">✨ 魔法音效</button>
+  <button onclick="playSFX('ambient')">🌙 氛围音效</button>
+</div>
+
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160/build/three.module.js"}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+// === Web Audio 引擎 ===
+const ctx=new(window.AudioContext||window.webkitAudioContext)();
+let musicPlaying=false, musicGain, musicNodes=[];
+
+// BGM — 赛博朋克风格
+function startMusic(){
+  if(musicPlaying)return;
+  musicGain=ctx.createGain();musicGain.gain.value=0.15;
+  musicGain.connect(ctx.destination);
+
+  // 鼓点
+  const kick=()=>{
+    const o=ctx.createOscillator();const g=ctx.createGain();
+    o.type='sine';o.frequency.setValueAtTime(150,ctx.currentTime);o.frequency.exponentialRampToValueAtTime(40,ctx.currentTime+0.15);
+    g.gain.setValueAtTime(0.8,ctx.currentTime);g.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.3);
+    o.connect(g);g.connect(musicGain);o.start();o.stop(ctx.currentTime+0.3);
+  };
+  const hihat=()=>{
+    const o=ctx.createOscillator();const g=ctx.createGain();
+    o.type='square';o.frequency.setValueAtTime(800,ctx.currentTime);
+    g.gain.setValueAtTime(0.05,ctx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.05);
+    o.connect(g);g.connect(musicGain);o.start();o.stop(ctx.currentTime+0.05);
+  };
+  const bass=()=>{
+    const o=ctx.createOscillator();const g=ctx.createGain();
+    o.type='sawtooth';o.frequency.setValueAtTime(55,ctx.currentTime);
+    g.gain.setValueAtTime(0.3,ctx.currentTime);
+    o.connect(g);g.connect(musicGain);o.start();o.stop(ctx.currentTime+0.25);
+  };
+  const lead=(freq,time)=>{
+    const o=ctx.createOscillator();const g=ctx.createGain();
+    o.type='triangle';o.frequency.setValueAtTime(freq,time);
+    g.gain.setValueAtTime(0.15,time);g.gain.linearRampToValueAtTime(0,time+0.4);
+    o.connect(g);g.connect(musicGain);o.start(time);o.stop(time+0.4);
+  };
+
+  const bpm=128;const beat=60/bpm;
+  let beatCount=0;
+  const melody=[262,330,392,330,294,349,440,349,330,392,523,392,349,440,587,440];
+  const seq=setInterval(()=>{
+    kick();
+    if(beatCount%2===0)bass();
+    if(beatCount%4===0)hihat();else hihat();
+    if(beatCount%8===0)lead(melody[Math.floor(beatCount/2)%melody.length],ctx.currentTime);
+    beatCount++;
+  },beat*500);
+  musicNodes.push({stop:()=>clearInterval(seq)});
+  musicPlaying=true;
+}
+
+function stopMusic(){
+  musicNodes.forEach(n=>n.stop());musicNodes=[];
+  if(musicGain){musicGain.disconnect();musicGain=null;}
+  musicPlaying=false;
+}
+
+function toggleMusic(){
+  if(musicPlaying){stopMusic();document.getElementById('btn-music').classList.remove('playing');}
+  else{startMusic();document.getElementById('btn-music').classList.add('playing');}
+}
+
+// 音效
+function playSFX(type){
+  const o=ctx.createOscillator();const g=ctx.createGain();const t=ctx.currentTime;
+  o.connect(g);g.connect(ctx.destination);
+  switch(type){
+    case 'impact':o.type='sawtooth';o.frequency.setValueAtTime(300,t);o.frequency.exponentialRampToValueAtTime(60,t+0.2);g.gain.setValueAtTime(0.5,t);g.gain.exponentialRampToValueAtTime(0.01,t+0.3);o.start(t);o.stop(t+0.3);
+      // 加噪音层
+      const n=ctx.createOscillator();const ng=ctx.createGain();n.type='square';n.frequency.setValueAtTime(100,t);n.frequency.exponentialRampToValueAtTime(30,t+0.25);ng.gain.setValueAtTime(0.3,t);ng.gain.exponentialRampToValueAtTime(0.01,t+0.35);n.connect(ng);ng.connect(ctx.destination);n.start(t);n.stop(t+0.35);
+      break;
+    case 'magic':o.type='sine';o.frequency.setValueAtTime(500,t);o.frequency.linearRampToValueAtTime(2000,t+0.3);g.gain.setValueAtTime(0.2,t);g.gain.setValueAtTime(0.3,t+0.15);g.gain.exponentialRampToValueAtTime(0.01,t+0.5);o.start(t);o.stop(t+0.5);
+      const m2=ctx.createOscillator();const mg2=ctx.createGain();m2.type='triangle';m2.frequency.setValueAtTime(800,t);m2.frequency.linearRampToValueAtTime(2400,t+0.3);mg2.gain.setValueAtTime(0.15,t);mg2.gain.exponentialRampToValueAtTime(0.01,t+0.5);m2.connect(mg2);mg2.connect(ctx.destination);m2.start(t);m2.stop(t+0.5);
+      break;
+    case 'ambient':{
+      const bufferSize=4096;const proc=ctx.createScriptProcessor(bufferSize,1,1);
+      let ph=0;proc.onaudioprocess=e=>{const out=e.outputBuffer.getChannelData(0);for(let i=0;i<bufferSize;i++){ph++;out[i]=(Math.sin(ph*0.003+Math.sin(ph*0.0005)*3)*0.1+(Math.random()-0.5)*0.05);}};
+      const ag=ctx.createGain();ag.gain.setValueAtTime(0.2,t);
+      proc.connect(ag);ag.connect(ctx.destination);
+      setTimeout(()=>{proc.disconnect();ag.disconnect();},5000);
+      break;
+    }
+  }
+}
+
+// === Three.js 场景 ===
+const scene=new THREE.Scene();
+scene.fog=new THREE.FogExp2(0x0a0a20,0.0008);
+const camera=new THREE.PerspectiveCamera(50,innerWidth/innerHeight,0.5,100);
+camera.position.set(0,3,8);camera.lookAt(0,1,0);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled=true;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.3;
+document.body.appendChild(renderer.domElement);
+
+// 光照
+scene.add(new THREE.AmbientLight(0x1a1a3a,2));
+const dir=new THREE.DirectionalLight(0x6688ff,5);
+dir.position.set(5,10,5);dir.castShadow=true;
+dir.shadow.mapSize.set(1024,1024);
+scene.add(dir);
+
+// 地面
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(20,20),new THREE.MeshStandardMaterial({color:0x111133,roughness:0.6,metalness:0.4}));
+floor.rotation.x=-Math.PI/2;floor.position.y=-0.01;floor.receiveShadow=true;
+scene.add(floor);
+
+// 网格环 (舞台)
+const stage=new THREE.Mesh(new THREE.TorusGeometry(2.5,0.03,16,64),new THREE.MeshBasicMaterial({color:0x00ffff,transparent:true,opacity:0.5}));
+stage.rotation.x=-Math.PI/2;stage.position.y=0.01;scene.add(stage);
+
+// === 骨骼角色 (程序化骨骼动画) ===
+const character=new THREE.Group();
+const bones={},parts={};
+const boneList=['spine','chest','neck','head',
+  'lUpperArm','lForearm','lHand',
+  'rUpperArm','rForearm','rHand',
+  'lThigh','lShin','lFoot',
+  'rThigh','rShin','rFoot'];
+
+// 骨骼层级
+const hierarchy={
+  spine:null,chest:'spine',neck:'chest',head:'neck',
+  lUpperArm:'chest',lForearm:'lUpperArm',lHand:'lForearm',
+  rUpperArm:'chest',rForearm:'rUpperArm',rHand:'rForearm',
+  lThigh:'spine',lShin:'lThigh',lFoot:'lShin',
+  rThigh:'spine',rShin:'rThigh',rFoot:'rShin'
+};
+
+// 骨骼默认位置
+const boneRest={
+  spine:[0,0,0],chest:[0,0.5,0],neck:[0,0.4,0],head:[0,0.3,0],
+  lUpperArm:[0.2,0.3,0],lForearm:[0,0.35,0],lHand:[0,0.3,0],
+  rUpperArm:[-0.2,0.3,0],rForearm:[0,0.35,0],rHand:[0,0.3,0],
+  lThigh:[0.12,-0.3,0],lShin:[0,-0.4,0],lFoot:[0,-0.15,0],
+  rThigh:[-0.12,-0.3,0],rShin:[0,-0.4,0],rFoot:[0,-0.15,0]
+};
+
+// 构建骨骼和几何体组
+const bodyParts={
+  spine:[0.2,0.5,0.15],chest:[0.25,0.4,0.18],neck:[0.08,0.12,0.08],head:[0.2,0.22,0.2],
+  lUpperArm:[0.1,0.3,0.1],lForearm:[0.08,0.28,0.08],lHand:[0.06,0.08,0.06],
+  rUpperArm:[0.1,0.3,0.1],rForearm:[0.08,0.28,0.08],rHand:[0.06,0.08,0.06],
+  lThigh:[0.13,0.38,0.13],lShin:[0.1,0.35,0.1],lFoot:[0.1,0.06,0.18],
+  rThigh:[0.13,0.38,0.13],rShin:[0.1,0.35,0.1],rFoot:[0.1,0.06,0.18]
+};
+
+for(const b of boneList){
+  bones[b]=new THREE.Group();
+  bones[b].userData={baseRot:new THREE.Euler(),targetRot:new THREE.Euler()};
+  const bp=boneRest[b];
+  bones[b].position.set(...bp);
+  if(hierarchy[b]===null)character.add(bones[b]);
+  else bones[hierarchy[b]].add(bones[b]);
+
+  if(bodyParts[b]){
+    const s=bodyParts[b];
+    const mesh=new THREE.Mesh(new THREE.BoxGeometry(...s),new THREE.MeshStandardMaterial({color:b.includes('Head')?0x2244aa:b.includes('Arm')||b.includes('Hand')?0x3355bb:b.includes('Thigh')||b.includes('Shin')?0x223366:0x4466cc,metalness:0.4,roughness:0.3,emissive:0x001133}));
+    mesh.castShadow=true;
+    if(b==='head'){
+      const visor=new THREE.Mesh(new THREE.BoxGeometry(0.14,0.08,0.04),new THREE.MeshBasicMaterial({color:0x00ffff}));
+      visor.position.set(0,0.03,0.11);mesh.add(visor);
+    }
+    bones[b].add(mesh);
+  }
+}
+
+character.position.set(0,0,0);
+scene.add(character);
+
+// === 动画系统 ===
+let currentAnim='idle',time=0,animTimer=0;
+const animData={
+  idle:[
+    {bone:'lUpperArm',rx:0,ry:0,rz:-0.2},{bone:'rUpperArm',rx:0,ry:0,rz:0.2},
+    {bone:'lForearm',rx:0,ry:0,rz:-0.1},{bone:'rForearm',rx:0,ry:0,rz:0.1},
+  ],
+  walk:[
+    {bone:'lUpperArm',rx:0.4,rz:-0.3},{bone:'rUpperArm',rx:-0.4,rz:0.3},
+    {bone:'lThigh',rx:-0.5},{bone:'rThigh',rx:0.5},
+    {bone:'lShin',rx:0.3},{bone:'rShin',rx:-0.3},
+    {bone:'chest',rx:0.05,rz:0.05},
+  ],
+  run:[
+    {bone:'lUpperArm',rx:0.7,rz:-0.4},{bone:'rUpperArm',rx:-0.7,rz:0.4},
+    {bone:'lThigh',rx:-0.8},{bone:'rThigh',rx:0.8},
+    {bone:'lShin',rx:0.5},{bone:'rShin',rx:-0.5},
+    {bone:'chest',rx:0.15},{bone:'spine',rx:0.1},
+  ],
+  jump:[
+    {bone:'lThigh',rx:-0.9},{bone:'rThigh',rx:-0.9},
+    {bone:'lShin',rx:-0.4},{bone:'rShin',rx:-0.4},
+    {bone:'lUpperArm',rx:-0.6,rz:-0.3},{bone:'rUpperArm',rx:-0.6,rz:0.3},
+    {bone:'chest',rx:-0.3},{bone:'head',rx:0.2},
+  ],
+  attack:[
+    {bone:'rUpperArm',rx:-1.2,rz:0.8},{bone:'rForearm',rx:0.3},
+    {bone:'chest',ry:0.4,rz:0.3},{bone:'spine',ry:0.2},
+    {bone:'lUpperArm',rx:0.3,rz:-0.2},
+  ],
+  hit:[
+    {bone:'chest',rx:-0.5},{bone:'spine',rx:-0.3},
+    {bone:'head',rx:0.4},{bone:'lUpperArm',rx:0.5,rz:-0.4},
+    {bone:'rUpperArm',rx:0.5,rz:0.4},{bone:'lThigh',rx:0.2},{bone:'rThigh',rx:0.2},
+  ],
+  dance:[
+    {bone:'chest',rz:0.3},{bone:'lUpperArm',rx:0.8,rz:-0.6},{bone:'rUpperArm',rx:-0.8,rz:0.6},
+    {bone:'lForearm',rx:0.5},{bone:'rForearm',rx:0.5},
+    {bone:'lThigh',rx:-0.3,rz:0.2},{bone:'rThigh',rx:-0.3,rz:-0.2},
+    {bone:'head',rz:0.2},{bone:'spine',rz:0.15},
+  ]
+};
+
+function setAnim(name){
+  currentAnim=name;animTimer=0;
+  document.querySelectorAll('#ui button').forEach(b=>b.classList.remove('playing'));
+  const btn=document.getElementById('btn-'+name);
+  if(btn)btn.classList.add('playing');
+  // 触发对应音效
+  if(name==='attack')playSFX('impact');
+  if(name==='hit')playSFX('impact');
+  if(name==='jump')playSFX('magic');
+}
+
+function updateAnimation(dt){
+  animTimer+=dt;
+  const phase=Math.sin(animTimer*(currentAnim==='run'?12:currentAnim==='dance'?8:6));
+
+  // 重置为目标数据
+  const targets=animData[currentAnim]||animData.idle;
+  for(const t of targets){
+    if(bones[t.bone]){
+      let rx=t.rx||0,ry=t.ry||0,rz=t.rz||0;
+      if(currentAnim==='walk'||currentAnim==='run'){
+        const isLeft=t.bone.startsWith('l')&&(t.bone.includes('Thigh')||t.bone.includes('Arm'));
+        const isRight=t.bone.startsWith('r')&&(t.bone.includes('Thigh')||t.bone.includes('Arm'));
+        if(isLeft){rx*=phase;rz*=phase;}
+        if(isRight){rx*=-phase;rz*=-phase;}
+      }
+      if(currentAnim==='dance'){
+        rx*=phase;rz*=phase;
+        const alt=Math.sin(animTimer*4)*0.3;
+        if(t.bone.includes('Arm'))ry=(t.ry||0)+alt;
+      }
+      const rot=bones[t.bone].userData.targetRot;
+      rot.set(rx,ry,rz);
+    }
+  }
+
+  // 平滑所有骨骼
+  for(const b of boneList){
+    const r=bones[b].userData;
+    r.baseRot.x+=(r.targetRot.x-r.baseRot.x)*0.15;
+    r.baseRot.y+=(r.targetRot.y-r.baseRot.y)*0.15;
+    r.baseRot.z+=(r.targetRot.z-r.baseRot.z)*0.15;
+    bones[b].rotation.set(r.baseRot.x,r.baseRot.y,r.baseRot.z);
+  }
+
+  // 跳跃时整体抬升
+  if(currentAnim==='jump'){
+    const jh=Math.sin(animTimer*8)*Math.max(0,1-animTimer*2);
+    character.position.y=jh*1.5;
+    if(animTimer>0.5)setAnim('idle');
+  }
+
+  // 角色呼吸微动
+  if(currentAnim==='idle'){
+    character.position.y=Math.sin(time*2)*0.05;
+  }else if(currentAnim!=='jump'){
+    character.position.y=Math.sin(time*8)*0.03;
+  }
+}
+
+// 粒子背景
+const particlesGeo=new THREE.BufferGeometry();
+const pCount=200;
+const pPos=new Float32Array(pCount*3);
+for(let i=0;i<pCount*3;i+=3){pPos[i]=(Math.random()-0.5)*15;pPos[i+1]=Math.random()*6;pPos[i+2]=(Math.random()-0.5)*10;}
+particlesGeo.setAttribute('position',new THREE.BufferAttribute(pPos,3));
+const particles=new THREE.Points(particlesGeo,new THREE.PointsMaterial({color:0x00ffff,size:0.04,blending:THREE.AdditiveBlending}));
+scene.add(particles);
+
+// 渲染循环
+let lastTime=performance.now();
+function animate(){
+  const now=performance.now();
+  const dt=Math.min((now-lastTime)/1000,0.1);
+  lastTime=now;time+=dt;
+
+  updateAnimation(dt);
+  camera.position.x=Math.sin(time*0.3)*2;
+  camera.lookAt(character.position.x,1.5,character.position.z);
+  stage.rotation.z+=dt*0.3;
+  particles.rotation.y+=dt*0.1;
+
+  renderer.render(scene,camera);
+  document.getElementById('info').textContent=`FPS:${Math.round(1/dt)} | 动画:${currentAnim} | 时间:${time.toFixed(1)}s`;
+  requestAnimationFrame(animate);
+}
+animate();
+
+// 默认启动BGM
+setTimeout(()=>{startMusic();document.getElementById('btn-music').classList.add('playing');},500);
+
+window.toggleMusic=toggleMusic;
+window.setAnim=setAnim;
+window.playSFX=playSFX;
+window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+</script>
+</body>
+</html>
