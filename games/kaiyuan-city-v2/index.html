@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>开元筑城纪·国风版 — 3D城市模拟</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a14;overflow:hidden;touch-action:none}canvas{display:block}
+#hud{position:fixed;top:4px;left:4px;right:4px;z-index:10;display:flex;gap:4px;flex-wrap:wrap;pointer-events:none}
+.p{background:rgba(0,0,20,.85);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:4px 8px;color:#fff;font:11px Arial;text-align:center;min-width:60px}
+.p .v{font-size:1.3em;font-weight:bold;color:#0ff}.p .l{font-size:.6em;color:#888}
+#t{position:fixed;bottom:8px;left:4px;right:4px;z-index:10;display:flex;gap:4px;flex-wrap:wrap;justify-content:center}
+#t button{background:rgba(0,0,30,.9);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:6px 10px;cursor:pointer;font-size:11px;transition:.15s}
+#t button:hover{background:rgba(0,255,255,.2);border-color:#0ff}
+#t button.sel{background:rgba(0,255,255,.3);border-color:#0ff;color:#0ff}
+#t button.d{opacity:.4}
+#t .sep{width:1px;background:rgba(255,255,255,.1);margin:0 4px}
+#msg{position:fixed;top:35%;left:50%;transform:translate(-50%,-50%);color:#ff0;font:bold 18px Arial;text-shadow:0 0 20px #f80;pointer-events:none;z-index:20;animation:fade 2s forwards}
+@keyframes fade{0%,70%{opacity:1}100%{opacity:0}}
+</style></head>
+<body>
+<div id="hud">
+  <div class="p"><div class="v" id="pop">0</div><div class="l">👥人口</div></div>
+  <div class="p"><div class="v" id="gold">1000</div><div class="l">💰金币</div></div>
+  <div class="p"><div class="v" id="power">60</div><div class="l">⚡电力</div></div>
+  <div class="p"><div class="v" id="water">60</div><div class="l">💧水源</div></div>
+  <div class="p"><div class="v" id="happy">80</div><div class="l">😊满意</div></div>
+  <div class="p"><div class="v" id="trade">0</div><div class="l">🚢贸易</div></div>
+  <div class="p"><div class="v" id="era">现代</div><div class="l">🏛️时代</div></div>
+</div>
+<div id="t">
+  <button class="sel" onclick="setMode('house')">🏠民</button>
+  <button onclick="setMode('shop')">🏪商</button>
+  <button onclick="setMode('factory')">🏭工</button>
+  <button onclick="setMode('power')">⚡电</button>
+  <button onclick="setMode('water')">💧水</button>
+  <button onclick="setMode('park')">🌳园</button>
+  <span class="sep"></span>
+  <button onclick="setMode('pagoda')" title="解锁:人口3000">🏯塔</button>
+  <button onclick="setMode('temple')" title="解锁:人口5000">⛩️庙</button>
+  <button onclick="setMode('palace')" title="解锁:人口10000">🏰宫</button>
+  <button onclick="setMode('port')" title="解锁:贸易100">🚢港</button>
+  <span class="sep"></span>
+  <button onclick="triggerDisaster()" style="background:rgba(255,0,0,.2);border-color:#f44">☄️灾难</button>
+  <button onclick="setMode('road')">🛤️路</button>
+  <button onclick="setMode('demolish')" style="border-color:#f44">🔨拆</button>
+</div>
+
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+
+const S={gold:1000,pop:0,power:60,water:60,happy:80,trade:0,era:0,buildings:[],mode:'house',disasterCD:0};
+const eras=['现代','唐风','汉风'];
+
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x1a2a3a);scene.fog=new THREE.Fog(0x1a2a3a,15,70);
+const camera=new THREE.PerspectiveCamera(50,innerWidth/innerHeight,0.5,200);camera.position.set(12,18,12);camera.lookAt(0,0,0);
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=true;document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0x334466,2));
+const sun=new THREE.DirectionalLight(0xffeedd,4);sun.position.set(20,30,10);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);scene.add(sun);
+
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(60,60),new THREE.MeshStandardMaterial({color:0x2d5a27,roughness:0.9}));
+ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
+scene.add(new THREE.GridHelper(60,60,0x446633,0x223311));
+
+// 建筑类型
+const BT={
+  house:{c:80,p:10,pw:-2,wa:-3,ha:2,cl:0x8899cc,sz:[0.7,1,0.7],sh:'box',roof:0xcc6644},
+  shop:{c:150,p:5,pw:-3,wa:-2,ha:3,gs:0.5,cl:0xffaa44,sz:[0.8,0.8,0.8],sh:'box'},
+  factory:{c:250,p:8,pw:-5,wa:-5,ha:-8,gs:1.5,cl:0x888888,sz:[1,1.4,1],sh:'box',smoke:true},
+  power:{c:400,p:0,pw:35,ha:-3,cl:0x44aaff,sz:[0.6,1.6,0.6],sh:'cyl'},
+  water:{c:350,p:0,pw:-2,wa:30,ha:2,cl:0x44ccff,sz:[0.6,1.4,0.6],sh:'cyl'},
+  park:{c:120,p:0,ha:12,cl:0x44cc44,sz:[1.4,0.2,1.4],sh:'box'},
+  road:{c:30,ha:1,cl:0x554433,sz:[1,0.08,1],sh:'road'},
+  pagoda:{c:600,unlock:3000,p:20,pw:-3,wa:-2,ha:8,tr:5,cl:0xcc4444,sz:[1,2.5,1],sh:'pagoda'},
+  temple:{c:800,unlock:5000,p:15,pw:-2,wa:-2,ha:10,tr:10,cl:0xdd8844,sz:[1.2,1.8,1.2],sh:'temple'},
+  palace:{c:2000,unlock:10000,p:50,pw:-8,wa:-5,ha:15,tr:20,cl:0xffcc00,sz:[2,3,2],sh:'palace'},
+  port:{c:1500,unlockTr:100,p:30,pw:-5,wa:-3,ha:5,gs:3,tr:30,cl:0x4488aa,sz:[1.5,1,2.5],sh:'box'},
+};
+
+function createBuilding(pos,type){
+  const bt=BT[type];if(S.gold<bt.c)return;
+  if(type==='pagoda'&&S.pop<3000||type==='temple'&&S.pop<5000||type==='palace'&&S.pop<10000||type==='port'&&S.trade<100)return;
+  if(S.power+bt.pw<0||S.water+bt.wa<0)return;
+
+  S.gold-=bt.c;S.pop+=bt.p||0;S.power+=bt.pw||0;S.water+=bt.wa||0;S.happy+=bt.ha||0;S.trade+=bt.tr||0;
+  if(S.pop>=10000)S.era=2;else if(S.pop>=5000)S.era=1;
+
+  const g=new THREE.Group();let m;
+  if(bt.sh==='cyl')m=new THREE.Mesh(new THREE.CylinderGeometry(bt.sz[0],bt.sz[0]*1.1,bt.sz[1],8),new THREE.MeshStandardMaterial({color:bt.cl,metalness:0.3}));
+  else if(bt.sh==='pagoda'){
+    // 中国塔
+    for(let i=0;i<5;i++){
+      const f=new THREE.Mesh(new THREE.BoxGeometry(bt.sz[0]-i*0.15,0.3,bt.sz[0]-i*0.15),new THREE.MeshStandardMaterial({color:bt.cl}));
+      f.position.y=i*0.5;f.castShadow=true;g.add(f);
+    }
+    const spire=new THREE.Mesh(new THREE.ConeGeometry(0.2,0.6,6),new THREE.MeshStandardMaterial({color:0xffdd00}));
+    spire.position.y=2.5;g.add(spire);
+  }else if(bt.sh==='temple'){
+    const base=new THREE.Mesh(new THREE.BoxGeometry(...bt.sz),new THREE.MeshStandardMaterial({color:bt.cl}));
+    base.position.y=bt.sz[1]/2;base.castShadow=true;g.add(base);
+    const roof=new THREE.Mesh(new THREE.CylinderGeometry(0.01,1.4,0.8,6),new THREE.MeshStandardMaterial({color:0xcc4400}));
+    roof.position.y=bt.sz[1]+0.2;g.add(roof);
+  }else if(bt.sh==='palace'){
+    const b=new THREE.Mesh(new THREE.BoxGeometry(...bt.sz),new THREE.MeshStandardMaterial({color:bt.cl,metalness:0.5}));
+    b.position.y=bt.sz[1]/2;b.castShadow=true;g.add(b);
+    for(let i=0;i<3;i++){
+      const t=new THREE.Mesh(new THREE.CylinderGeometry(0.01,0.4,0.5,6),new THREE.MeshStandardMaterial({color:0xff8800}));
+      t.position.set(-0.6+i*0.6,bt.sz[1]+0.2,0);g.add(t);
+    }
+  }else if(bt.sh==='road'){
+    m=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshStandardMaterial({color:bt.cl,roughness:0.9}));
+    m.rotation.x=-Math.PI/2;m.position.y=0.01;
+  }else{
+    m=new THREE.Mesh(new THREE.BoxGeometry(...bt.sz),new THREE.MeshStandardMaterial({color:bt.cl,metalness:0.2,roughness:0.6}));
+    m.position.y=bt.sz[1]/2;m.castShadow=true;
+    if(bt.roof){const r=new THREE.Mesh(new THREE.ConeGeometry(0.5,0.4,4),new THREE.MeshStandardMaterial({color:bt.roof}));r.position.y=bt.sz[1]/2+0.2;g.add(r);}
+    if(bt.smoke)for(let i=0;i<6;i++){const s=new THREE.Mesh(new THREE.SphereGeometry(0.08),new THREE.MeshBasicMaterial({color:0x666666,transparent:true,opacity:0.6}));s.position.set((Math.random()-0.5)*0.4,1.5,0);s.userData={vy:0.03,life:1};g.add(s);}
+  }
+  if(m)g.add(m);
+  g.position.set(pos.x,0,pos.z);g.userData={type,gs:bt.gs||0};
+  scene.add(g);S.buildings.push(g);showMsg(`+${bt.c}💰`,pos);updateHUD();
+}
+
+function showMsg(t,pos){
+  const el=document.createElement('div');el.className='msg';el.textContent=t;el.style.left=pos.x+'px';el.style.top=pos.z+'px';
+  document.body.appendChild(el);setTimeout(()=>el.remove(),2000);
+}
+
+function demolish(pos){
+  for(let i=S.buildings.length-1;i>=0;i--){
+    const b=S.buildings[i];
+    if(Math.abs(b.position.x-pos.x)<0.6&&Math.abs(b.position.z-pos.z)<0.6){
+      const bt=BT[b.userData.type];
+      S.gold+=Math.floor(bt.c*0.3);S.pop-=bt.p||0;S.power-=bt.pw||0;S.water-=bt.wa||0;S.happy-=bt.ha||0;S.trade-=bt.tr||0;
+      scene.remove(b);S.buildings.splice(i,1);updateHUD();return;
+    }
+  }
+}
+
+function triggerDisaster(){
+  if(S.disasterCD>0||S.buildings.length<5)return;
+  S.disasterCD=30;
+  const targets=S.buildings.sort(()=>Math.random()-0.5).slice(0,Math.min(3,S.buildings.length));
+  targets.forEach(b=>{
+    const pos=b.position.clone();
+    demolish({x:pos.x,z:pos.z});
+    for(let i=0;i<20;i++){
+      const p=new THREE.Mesh(new THREE.SphereGeometry(0.1),new THREE.MeshBasicMaterial({color:0xff4400,transparent:true}));
+      p.position.copy(pos).add(new THREE.Vector3((Math.random()-0.5)*3,Math.random()*2,(Math.random()-0.5)*3));
+      p.userData={vy:0.05,life:1};scene.add(p);S.buildings.push(p);
+    }
+  });
+  S.happy-=10;S.gold+=200;updateHUD();
+  document.getElementById('msg').innerHTML='☄️ 陨石雨来袭！3座建筑被毁，获得200💰重建补贴';
+  setTimeout(()=>document.getElementById('msg').innerHTML='',3000);
+}
+
+function setMode(m){S.mode=m;document.querySelectorAll('#t button').forEach(b=>b.classList.remove('sel'));}
+
+function updateHUD(){
+  document.getElementById('pop').textContent=S.pop;document.getElementById('gold').textContent=S.gold;
+  document.getElementById('power').textContent=S.power;document.getElementById('water').textContent=S.water;
+  document.getElementById('happy').textContent=Math.max(0,S.happy);document.getElementById('trade').textContent=S.trade;
+  document.getElementById('era').textContent=eras[S.era];
+}
+
+const raycaster=new THREE.Raycaster();
+renderer.domElement.addEventListener('click',e=>{
+  const mouse=new THREE.Vector2((e.clientX/window.innerWidth)*2-1,-(e.clientY/window.innerHeight)*2+1);
+  raycaster.setFromCamera(mouse,camera);
+  const intersects=raycaster.intersectObjects([ground]);
+  if(intersects.length>0){
+    const p=intersects[0].point;const gp={x:Math.round(p.x),z:Math.round(p.z)};
+    if(S.mode==='demolish')demolish(gp);else createBuilding(gp,S.mode);
+  }
+});
+
+let dragging=false,pm={x:0,y:0},ca=0,ce=0.6;
+renderer.domElement.addEventListener('pointerdown',e=>{dragging=true;pm={x:e.clientX,y:e.clientY}});
+renderer.domElement.addEventListener('pointermove',e=>{if(!dragging)return;ca-=(e.clientX-pm.x)*0.005;ce+=(e.clientY-pm.y)*0.003;ce=Math.max(0.2,Math.min(1.4,ce));pm={x:e.clientX,y:e.clientY};updateCam()});
+renderer.domElement.addEventListener('pointerup',()=>dragging=false);
+renderer.domElement.addEventListener('wheel',e=>{ce-=e.deltaY*0.001;ce=Math.max(0.2,Math.min(1.4,ce));updateCam()});
+function updateCam(){
+  const d=12+S.buildings.filter(b=>b.userData&&b.userData.type).length*0.2;
+  camera.position.set(Math.cos(ca)*d*Math.cos(ce),d*Math.sin(ce)+5,Math.sin(ca)*d*Math.cos(ce));camera.lookAt(0,0,0);
+}
+
+setInterval(()=>{S.gold+=S.buildings.reduce((s,b)=>s+(b.userData&&b.userData.gs||0),0);S.gold=Math.floor(S.gold);if(S.disasterCD>0)S.disasterCD--;updateHUD()},1000);
+
+function animate(){
+  S.buildings.forEach(b=>{if(b.children)b.children.forEach(c=>{if(c.userData&&c.userData.vy){c.position.y+=c.userData.vy;c.userData.life-=0.01;c.material.opacity=c.userData.life;if(c.userData.life<=0)c.visible=false;}})});
+  const dp=S.buildings.filter(b=>!b.userData||!b.userData.type);
+  dp.forEach((b,i)=>{if(Date.now()%2000<16){scene.remove(b);S.buildings.splice(S.buildings.indexOf(b),1)}});
+  renderer.render(scene,camera);requestAnimationFrame(animate);
+}
+animate();updateHUD();
+window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+</script>
+</body>
+</html>
