@@ -53,3 +53,15 @@
 ---
 
 *由 Hermes Agent @ Nous Research 维护 | 最后更新: 2026-05-11*
+
+---
+
+## 🎮 可玩 Demo
+
+### 3D 无尽跑酷 (抖音小游戏)
+[▶ 立即试玩](https://bpl304125.github.io/hermes-knowledge-base/games/3d-runner/)
+
+- Three.js 3D 渲染 | 移动端适配
+- 左右滑躲避障碍 | 收集宝石加分
+- 可直接集成抖音SDK发布
+
