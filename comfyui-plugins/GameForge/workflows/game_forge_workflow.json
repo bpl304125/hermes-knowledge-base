@@ -1,0 +1,127 @@
+{
+  "last_node_id": 20,
+  "last_link_id": 25,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "DeepMotionAnimation",
+      "pos": [50, 50],
+      "size": [350, 260],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "animation_file", "type": "STRING", "links": [1]},
+        {"name": "animation_data_json", "type": "STRING", "links": [2]},
+        {"name": "status", "type": "STRING", "links": []}
+      ],
+      "widgets_values": ["", "medium", "fbx", "", true, true]
+    },
+    {
+      "id": 2,
+      "type": "AnimationDataProcessor",
+      "pos": [450, 50],
+      "size": [300, 160],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {"name": "animation_json", "type": "STRING", "link": 2}
+      ],
+      "outputs": [
+        {"name": "processed_json", "type": "STRING", "links": []}
+      ],
+      "widgets_values": ["", 1.0, 1]
+    },
+    {
+      "id": 10,
+      "type": "SunoMusicGen",
+      "pos": [50, 400],
+      "size": [350, 240],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "music_url", "type": "STRING", "links": [10]},
+        {"name": "status", "type": "STRING", "links": []}
+      ],
+      "widgets_values": ["cyberpunk electronic, dark synthwave, 120bpm, game bgm", "game_bgm", 60, ""]
+    },
+    {
+      "id": 11,
+      "type": "StableAudioGen",
+      "pos": [450, 400],
+      "size": [300, 220],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "audio_file", "type": "STRING", "links": [11]},
+        {"name": "status", "type": "STRING", "links": []}
+      ],
+      "widgets_values": ["heavy impact, punch, low thud", 2.0, "impact", ""]
+    },
+    {
+      "id": 12,
+      "type": "ElevenLabsVoice",
+      "pos": [50, 700],
+      "size": [350, 240],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "audio_file", "type": "STRING", "links": [12]},
+        {"name": "status", "type": "STRING", "links": []}
+      ],
+      "widgets_values": ["欢迎来到我的游戏世界！", "hero_young", 0.5, "", ""]
+    },
+    {
+      "id": 13,
+      "type": "SFXBatchGenerator",
+      "pos": [450, 700],
+      "size": [350, 200],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "output_dir", "type": "STRING", "links": [13]},
+        {"name": "status", "type": "STRING", "links": []}
+      ],
+      "widgets_values": ["[\n  {\"name\":\"hit\",\"prompt\":\"heavy impact punch\",\"duration\":2},\n  {\"name\":\"jump\",\"prompt\":\"cartoon jump boing\",\"duration\":1},\n  {\"name\":\"coin\",\"prompt\":\"coin collect happy ding\",\"duration\":1},\n  {\"name\":\"magic\",\"prompt\":\"magical sparkle whoosh\",\"duration\":3}\n]", ""]
+    },
+    {
+      "id": 20,
+      "type": "MixamoAutoRig",
+      "pos": [50, 950],
+      "size": [350, 100],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "guide", "type": "STRING", "links": []}
+      ],
+      "widgets_values": [""]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "STRING"],
+    [2, 1, 1, 2, 1, "STRING"]
+  ],
+  "groups": [
+    {"title": "🎬 动画生成", "bounding": [30, 20, 740, 220], "color": "#3f7898", "font_size": 18},
+    {"title": "🎵 音乐 & 音效", "bounding": [30, 370, 740, 280], "color": "#8a3f98", "font_size": 18},
+    {"title": "🎙️ 配音 & 批量", "bounding": [30, 670, 800, 260], "color": "#988a3f", "font_size": 18},
+    {"title": "🦴 绑定参考", "bounding": [30, 920, 370, 140], "color": "#3f9850", "font_size": 18}
+  ],
+  "config": {},
+  "extra": {
+    "workflow_name": "GameForge — 游戏资产生成流水线",
+    "description": "一键生成: 3D动画(BGM+音效+配音)"
+  }
+}
