@@ -1,0 +1,25 @@
+{
+  "last_node_id": 12,
+  "nodes": [
+    {"id":1,"type":"CLIPTextEncode","pos":[50,50],"widgets_values":["masterpiece, best quality, anime style, 2D animation frame, key visual, cinematic lighting, sci-fi, starry sky, space explorer, detailed background"],"title":"质量Prompt"},
+    {"id":2,"type":"CLIPTextEncode","pos":[50,150],"widgets_values":["blurry, low quality, photorealistic, 3d render, realistic"],"title":"负面Prompt"},
+    {"id":3,"type":"CheckpointLoaderSimple","pos":[50,280],"widgets_values":["anythingV5_PRT-RE.safetensors"],"title":"动漫模型"},
+    {"id":4,"type":"CLIPTextEncode","pos":[350,50],"widgets_values":["luna, 1girl, long silver hair, purple eyes, space suit, futuristic, looking at stars, night sky, rooftop, city lights, solo, upper body"],"title":"场景Prompt-序幕"},
+    {"id":5,"type":"KSampler","pos":[650,50],"widgets_values":[42,"fixed",25,7,"euler_ancestral","normal",1],"title":"采样器"},
+    {"id":6,"type":"VAEDecode","pos":[350,350]},
+    {"id":7,"type":"SaveImage","pos":[650,350],"widgets_values":["anime_frame_"],"title":"保存帧"},
+    {"id":8,"type":"CLIPTextEncode","pos":[350,500],"widgets_values":["luna and kai, 1girl 1boy, laboratory, holographic screens, blue lighting, scientist, discovery, excitement, medium shot"],"title":"场景Prompt-实验室"},
+    {"id":9,"type":"CLIPTextEncode","pos":[350,650],"widgets_values":["luna, 1girl, ancient ruins, glowing runes, mysterious atmosphere, purple crystals, alien planet, wonder, exploration, full body shot"],"title":"场景Prompt-遗迹"},
+    {"id":10,"type":"CLIPTextEncode","pos":[350,800],"widgets_values":["aria, spirit guardian, ethereal, translucent, glowing wings, ancient temple, light beams, divine, beautiful, fantasy, floating"],"title":"场景Prompt-Aria"},
+    {"id":11,"type":"CLIPTextEncode","pos":[350,950],"widgets_values":["luna and aria, 1girl and spirit, starlight, cosmic, space, galaxy, nebulae, emotional, hand reaching out, tears of light, masterpiece"],"title":"场景Prompt-共鸣"},
+    {"id":12,"type":"CLIPTextEncode","pos":[350,1100],"widgets_values":["sunrise, returning home, dawn light, luna and kai, looking at horizon, hopeful, new beginning, silhouette, golden hour, ending scene, anime"],"title":"场景Prompt-终幕"}
+  ],
+  "links":[[3,0,5,0],[1,0,5,1],[2,0,5,2],[4,0,5,3],[5,0,6,0],[6,0,7,0]],
+  "groups":[
+    {"title":"🎬 星之回响 Anime Generator","bounding":[30,20,740,1200],"color":"#8a3f98","font_size":18}
+  ],
+  "extra":{
+    "workflow_name":"星之回响 — 动漫帧批量生成",
+    "description":"为15分钟动漫生成关键帧。切换场景Prompt节点输出到KSampler的positive输入。推荐使用AnythingV5或Counterfeit模型。"
+  }
+}

@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>星之回响 — 15分钟动漫剧场</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a14;color:#fff;font-family:'Georgia',serif;min-height:100vh}
+#theater{max-width:900px;margin:0 auto;padding:20px}
+#screen{position:relative;width:100%;aspect-ratio:16/9;background:#000;border:2px solid #224;border-radius:12px;overflow:hidden;box-shadow:0 0 60px rgba(100,100,255,.2)}
+#canvas{width:100%;height:100%}
+#subtitles{position:absolute;bottom:30px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.7);color:#fff;padding:8px 24px;border-radius:8px;font-size:1.1em;text-align:center;max-width:80%;min-height:30px;border:1px solid rgba(255,255,255,.1)}
+#controls{display:flex;align-items:center;gap:16px;margin-top:16px;flex-wrap:wrap;justify-content:center}
+#controls button{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:10px 20px;cursor:pointer;font-size:14px;transition:all .2s}
+#controls button:hover{background:rgba(100,100,255,.3);border-color:#88f}
+#controls button.active{background:#446;border-color:#88f}
+#progress{flex:1;min-width:150px;height:6px;background:rgba(255,255,255,.1);border-radius:3px;cursor:pointer;position:relative}
+#progressBar{height:100%;background:linear-gradient(90deg,#48f,#a6f);border-radius:3px;transition:width .3s}
+#time{font:14px monospace;color:#aaa;min-width:60px;text-align:center}
+#sceneInfo{text-align:center;color:#aaa;font-size:13px;margin-top:8px}
+#tabs{display:flex;gap:8px;margin:20px 0}
+.tab{padding:8px 20px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;cursor:pointer;font-size:13px;color:#aaa}
+.tab.active{background:rgba(100,100,255,.2);border-color:#88f;color:#fff}
+#content{background:rgba(255,255,255,.03);border-radius:12px;padding:24px;border:1px solid rgba(255,255,255,.05);font-size:14px;line-height:1.8}
+#content h3{color:#88f;margin:16px 0 8px}
+#content h2{color:#a6f;margin:20px 0 12px;font-size:1.3em}
+.char-card{display:inline-block;background:rgba(255,255,255,.05);border-radius:10px;padding:16px;margin:8px;width:200px;text-align:center;vertical-align:top}
+.char-card .avatar{font-size:3em;margin-bottom:8px}
+.char-card .name{font-weight:bold;color:#a8f;font-size:1.1em}
+.char-card .role{color:#888;font-size:.8em;margin-top:4px}
+</style></head>
+<body>
+
+<div id="theater">
+<div id="screen">
+<canvas id="canvas"></canvas>
+<div id="subtitles"></div>
+</div>
+
+<div id="controls">
+<button onclick="togglePlay()" id="playBtn">▶ 播放</button>
+<button onclick="prevScene()">⏮ 上一幕</button>
+<button onclick="nextScene()">⏭ 下一幕</button>
+<div id="progress" onclick="seekProgress(event)"><div id="progressBar" style="width:0%"></div></div>
+<span id="time">00:00 / 15:00</span>
+</div>
+<div id="sceneInfo"></div>
+
+<div id="tabs">
+<div class="tab active" onclick="switchTab('player')">🎬 播放器</div>
+<div class="tab" onclick="switchTab('script')">📜 剧本</div>
+<div class="tab" onclick="switchTab('characters')">👥 角色</div>
+<div class="tab" onclick="switchTab('storyboard')">🎞 分镜</div>
+</div>
+
+<div id="content"></div>
+</div>
+
+<script>
+// === 场景数据 (15分钟 = 900秒, 共15个场景) ===
+const scenes=[
+  {id:0, time:"00:00-00:50", duration:50, title:"序幕：星之回响", dialogue:"在那遥远的未来，人类已经遍布银河……", 
+   bg:"night", chars:"none", mood:"神秘的宇宙深处，星光如碎钻般撒在无尽的黑暗中。一颗蓝色的星球缓缓旋转。"},
+  {id:1, time:"00:50-02:00", duration:70, title:"第一幕：平凡的日子", dialogue:"又是和平的一天呢。", 
+   bg:"city", chars:"luna", mood:"未来城市的天台上，少女Luna望着星空。飞行器穿梭在高楼之间，霓虹灯光映在她清澈的眼眸里。"},
+  {id:2, time:"02:00-03:00", duration:60, title:"第二幕：神秘的信号", dialogue:"这个频率……从来没有出现过。", 
+   bg:"lab", chars:"luna,kai", mood:"实验室里，全息屏幕上跳动着未知的波形。Kai推了推眼镜，手指在虚拟键盘上飞速敲击。"},
+  {id:3, time:"03:00-04:00", duration:60, title:"第三幕：星门启动", dialogue:"坐标已锁定！", 
+   bg:"gate", chars:"luna,kai", mood:"巨大的环形星门在空间中展开，蓝色的能量涟漪一圈圈扩散。Luna握紧手中的数据板，深吸一口气。"},
+  {id:4, time:"04:00-05:00", duration:60, title:"第四幕：异星降临", dialogue:"这就是……另一个世界？", 
+   bg:"alien", chars:"luna,kai", mood:"紫色的天空下，奇异的植物发着微光。远处漂浮着巨大的水晶岛屿。两个探索者站在陌生的土地上。"},
+  {id:5, time:"05:00-06:00", duration:60, title:"第五幕：遗迹之谜", dialogue:"这些文字……和地球的远古文字很像。", 
+   bg:"ruins", chars:"luna,kai", mood:"古老的高塔残骸，墙壁上刻满发光的符文。Kai用扫描仪记录着每一个细节，Luna伸手触摸那些符号，光芒从她指尖流过。"},
+  {id:6, time:"06:00-07:00", duration:60, title:"第六幕：危机降临", dialogue:"小心！！", 
+   bg:"danger", chars:"luna,kai,shadow", mood:"地面突然震动，巨大的黑影从遗迹深处升起。红色的能量光束扫过，Luna和Kai拼命奔跑。"},
+  {id:7, time:"07:00-08:00", duration:60, title:"第七幕：守护者的觉醒", dialogue:"你们……不是敌人。", 
+   bg:"ruins", chars:"luna,kai,aria", mood:"一道纯净的光芒挡在黑影之前。一个半透明的身影从光芒中走出——远古文明的守护者Aria苏醒了。"},
+  {id:8, time:"08:00-09:00", duration:60, title:"第八幕：远古的呼唤", dialogue:"我们的文明在百万年前就预见了终结……所以留下了星之回响。", 
+   bg:"memory", chars:"aria", mood:"全息影像展现出远古文明的辉煌与陨落。宏伟的城市、繁荣的文明，最终在绚烂的光芒中化为星尘。Aria的声音中带着无尽的悲伤。"},
+  {id:9, time:"09:00-10:00", duration:60, title:"第九幕：试炼之路", dialogue:"要继承星之回响，必须通过试炼。", 
+   bg:"trial", chars:"luna,aria", mood:"Luna独自走进一道光门。意识空间中，她面对着自己内心的恐惧——失败、孤独、被遗忘。每一道试炼都在考验着她的意志。"},
+  {id:10, time:"10:00-11:00", duration:60, title:"第十幕：心灵的共鸣", dialogue:"我明白了……你害怕的不是失败，而是被遗忘。", 
+   bg:"trial", chars:"luna,aria", mood:"Luna没有选择战斗，而是走向Aria的幻影，握住了她的手。光芒从两人之间爆发，整个试炼空间开始化开。"},
+  {id:11, time:"11:00-12:00", duration:60, title:"第十一幕：星之回响的真相", dialogue:"星之回响不是一个武器……它是所有文明共同谱写的希望之歌。", 
+   bg:"cosmic", chars:"luna,kai,aria", mood:"无数星辰在空间中排列成巨大的乐谱。每一颗星都代表一个曾经存在的文明，它们的声音交织成宇宙间最美的共鸣。"},
+  {id:12, time:"12:00-13:00", duration:60, title:"第十二幕：黑暗来袭", dialogue:"找到了……终于找到了！", 
+   bg:"battle", chars:"luna,kai,aria,shadow", mood:"黑影的真正面目揭露——它是吞噬文明记忆的虚空生物。它想独占星之回响，把所有文明的知识据为己有。大战爆发。"},
+  {id:13, time:"13:00-14:00", duration:60, title:"第十三幕：光之战", dialogue:"我们不是一个人在战斗！", 
+   bg:"battle", chars:"luna,kai,aria", mood:"Luna举起手，星之回响的力量通过她流向整个空间。所有星辰同时亮起，远古文明的力量汇聚成光束，射向虚空。"},
+  {id:14, time:"14:00-15:00", duration:60, title:"终幕：新的旅程", dialogue:"回家吧——然后告诉所有人，星空中有无数的朋友在等着我们。", 
+   bg:"dawn", chars:"luna,kai,aria", mood:"星门再次开启，这次通向的是地球的黎明。Luna和Kai向Aria挥手告别。晨光照在他们脸上，也照亮了人类探索宇宙的新篇章。片尾字幕缓缓升起。"},
+];
+
+let currentScene=0, sceneTimer=0, playing=false, totalDuration=900;
+const canvas=document.getElementById('canvas');
+const ctx2d=canvas.getContext('2d');
+let stars=[],animFrame=0;
+
+// 星空初始化
+for(let i=0;i<200;i++)stars.push({x:Math.random()*canvas.width,y:Math.random()*canvas.height,s:Math.random()*2+0.5,b:Math.random(),sp:Math.random()*0.3+0.1});
+
+function resizeCanvas(){
+  const el=canvas.parentElement;
+  canvas.width=el.clientWidth;canvas.height=el.clientHeight;
+}
+resizeCanvas();window.addEventListener('resize',resizeCanvas);
+
+function drawScene(){
+  const w=canvas.width,h=canvas.height;
+  ctx2d.clearRect(0,0,w,h);
+  const s=scenes[currentScene];
+
+  // 背景绘制 (程序化动漫风格)
+  switch(s.bg){
+    case 'night': // 宇宙深空
+      const ng=ctx2d.createLinearGradient(0,0,0,h);
+      ng.addColorStop(0,'#020210');ng.addColorStop(0.5,'#0a0a30');ng.addColorStop(1,'#101040');
+      ctx2d.fillStyle=ng;ctx2d.fillRect(0,0,w,h);
+      // 星云
+      for(let i=0;i<5;i++){
+        const ng2=ctx2d.createRadialGradient(w*(0.3+i*0.15),h*(0.3+i*0.1),0,w*(0.3+i*0.15),h*(0.3+i*0.1),w*0.25);
+        ng2.addColorStop(0,`rgba(100,100,255,${0.05+i*0.02})`);ng2.addColorStop(1,'rgba(0,0,0,0)');
+        ctx2d.fillStyle=ng2;ctx2d.fillRect(0,0,w,h);
+      }
+      // 主星
+      const pg=ctx2d.createRadialGradient(w*0.7,h*0.4,0,w*0.7,h*0.4,w*0.3);
+      pg.addColorStop(0,'#4488ff');pg.addColorStop(0.3,'#2244aa');pg.addColorStop(1,'rgba(0,0,0,0)');
+      ctx2d.fillStyle=pg;ctx2d.beginPath();ctx2d.arc(w*0.7,h*0.4,w*0.25,0,Math.PI*2);ctx2d.fill();
+      break;
+
+    case 'city': // 未来城市
+      const cg=ctx2d.createLinearGradient(0,0,0,h);
+      cg.addColorStop(0,'#0a0a20');cg.addColorStop(0.6,'#2a1040');cg.addColorStop(1,'#401040');
+      ctx2d.fillStyle=cg;ctx2d.fillRect(0,0,w,h);
+      // 高楼剪影
+      for(let i=0;i<15;i++){
+        const bx=i*w/14, bw=w/20, bh=h*(0.3+Math.random()*0.4);
+        ctx2d.fillStyle=`rgba(${20+i*10},${20+i*5},${40+i*10},0.8)`;
+        ctx2d.fillRect(bx,h-bh,bw,bh);
+        // 窗户灯
+        for(let fy=0;fy<bh-10;fy+=12){
+          if(Math.random()>0.3){
+            ctx2d.fillStyle='rgba(255,200,100,0.6)';
+            ctx2d.fillRect(bx+3,h-bh+fy+3,Math.min(6,bw-6),5);
+          }
+        }
+      }
+      // 飞行器
+      ctx2d.fillStyle='rgba(100,200,255,0.8)';
+      ctx2d.beginPath();ctx2d.ellipse(w*0.3,h*0.25,15,5,0.2,0,Math.PI*2);ctx2d.fill();
+      ctx2d.fillStyle='rgba(100,200,255,0.3)';
+      ctx2d.fillRect(w*0.3-8,h*0.25-2,16,4);
+      ctx2d.beginPath();ctx2d.ellipse(w*0.6,h*0.15,12,4,-0.1,0,Math.PI*2);ctx2d.fill();
+      break;
+
+    case 'lab': ctx2d.fillStyle='#0a1020';ctx2d.fillRect(0,0,w,h);
+      for(let i=0;i<8;i++){ctx2d.strokeStyle='rgba(0,200,255,0.1)';ctx2d.strokeRect(w*0.1,h*(0.1+i*0.1),w*0.8,h*0.05);}
+      // 全息屏幕
+      ctx2d.strokeStyle='rgba(0,255,200,0.6)';ctx2d.lineWidth=2;
+      ctx2d.strokeRect(w*0.25,h*0.15,w*0.5,h*0.4);
+      ctx2d.fillStyle='rgba(0,255,200,0.1)';ctx2d.fillRect(w*0.25,h*0.15,w*0.5,h*0.4);
+      // 波形
+      ctx2d.strokeStyle='#0f0';ctx2d.beginPath();
+      for(let x=0;x<w*0.5;x+=5)ctx2d.lineTo(w*0.25+x,h*0.35+Math.sin(x*0.02+animFrame*0.05)*30);
+      ctx2d.stroke();
+      break;
+
+    case 'gate': ctx2d.fillStyle='#000015';ctx2d.fillRect(0,0,w,h);
+      const gg=ctx2d.createRadialGradient(w/2,h/2,0,w/2,h/2,w*0.4);
+      gg.addColorStop(0,'#004488');gg.addColorStop(0.5,'#002244');gg.addColorStop(1,'#000010');
+      ctx2d.fillStyle=gg;ctx2d.fillRect(0,0,w,h);
+      // 星门环
+      for(let r=w*0.15;r<w*0.4;r+=w*0.04){
+        ctx2d.strokeStyle=`rgba(0,150,255,${0.3-r/w})`;ctx2d.lineWidth=2;
+        ctx2d.beginPath();ctx2d.ellipse(w/2,h/2,r,r*0.4,animFrame*0.005,0,Math.PI*2);ctx2d.stroke();
+      }
+      break;
+
+    case 'alien': ctx2d.fillStyle='#100520';ctx2d.fillRect(0,0,w,h);
+      // 紫天渐变
+      const ag=ctx2d.createLinearGradient(0,0,0,h);
+      ag.addColorStop(0,'#200840');ag.addColorStop(1,'#400860');
+      ctx2d.fillStyle=ag;ctx2d.fillRect(0,0,w,h);
+      // 水晶岛
+      for(let i=0;i<5;i++){
+        ctx2d.fillStyle=`rgba(200,150,255,${0.3+i*0.05})`;
+        ctx2d.beginPath();ctx2d.moveTo(w*(0.2+i*0.15),h*0.8);
+        ctx2d.lineTo(w*(0.22+i*0.15),h*0.5);ctx2d.lineTo(w*(0.28+i*0.15),h*0.45);
+        ctx2d.lineTo(w*(0.24+i*0.15),h*0.8);ctx2d.fill();
+      }
+      break;
+
+    case 'ruins': ctx2d.fillStyle='#100810';ctx2d.fillRect(0,0,w,h);
+      // 古塔
+      ctx2d.fillStyle='#1a1030';
+      ctx2d.beginPath();ctx2d.moveTo(w*0.4,h);ctx2d.lineTo(w*0.45,h*0.2);ctx2d.lineTo(w*0.55,h*0.2);ctx2d.lineTo(w*0.6,h);ctx2d.fill();
+      ctx2d.fillRect(w*0.35,h*0.8,w*0.05,h*0.2);
+      ctx2d.fillRect(w*0.6,h*0.7,w*0.04,h*0.3);
+      // 符文
+      for(let i=0;i<10;i++){
+        ctx2d.fillStyle='rgba(100,200,255,0.6)';
+        ctx2d.fillRect(w*(0.42+Math.random()*0.12),h*(0.3+Math.random()*0.4),3,8);
+      }
+      break;
+
+    case 'danger': ctx2d.fillStyle='#200000';ctx2d.fillRect(0,0,w,h);
+      for(let i=0;i<5;i++){
+        ctx2d.fillStyle=`rgba(255,${50+i*30},0,0.2)`;
+        ctx2d.beginPath();ctx2d.arc(w*(0.3+i*0.1),h*(0.4+i*0.05),w*0.1,0,Math.PI*2);ctx2d.fill();
+      }
+      break;
+
+    case 'memory': ctx2d.fillStyle='#000010';ctx2d.fillRect(0,0,w,h);
+      for(let i=0;i<20;i++){
+        ctx2d.fillStyle=`rgba(255,255,200,${0.05+Math.random()*0.1})`;
+        ctx2d.fillRect(Math.random()*w,Math.random()*h,Math.random()*15+2,Math.random()*15+2);
+      }
+      break;
+
+    case 'trial': ctx2d.fillStyle='#050510';ctx2d.fillRect(0,0,w,h);
+      const tg=ctx2d.createRadialGradient(w/2,h/2,0,w/2,h/2,w*0.5);
+      tg.addColorStop(0,'rgba(255,255,255,0.1)');tg.addColorStop(1,'rgba(0,0,0,0)');
+      ctx2d.fillStyle=tg;ctx2d.fillRect(0,0,w,h);
+      break;
+
+    case 'cosmic': ctx2d.fillStyle='#010108';ctx2d.fillRect(0,0,w,h);
+      // 乐谱星光
+      for(let i=0;i<30;i++){
+        ctx2d.fillStyle=`rgba(200,200,255,${0.3+Math.random()*0.5})`;
+        const px=w*(0.1+i*0.03), py=h*(0.2+Math.sin(i*0.5+animFrame*0.01)*0.3);
+        ctx2d.beginPath();ctx2d.arc(px,py,3,0,Math.PI*2);ctx2d.fill();
+        ctx2d.strokeStyle='rgba(150,150,255,0.2)';ctx2d.beginPath();ctx2d.moveTo(px,py);ctx2d.lineTo(px,py+w*0.3);ctx2d.stroke();
+      }
+      break;
+
+    case 'battle': ctx2d.fillStyle='#080010';ctx2d.fillRect(0,0,w,h);
+      for(let i=0;i<15;i++){
+        ctx2d.strokeStyle=`rgba(255,${i*10},${i*20},0.3)`;
+        ctx2d.beginPath();ctx2d.moveTo(Math.random()*w,Math.random()*h);ctx2d.lineTo(Math.random()*w,Math.random()*h);ctx2d.stroke();
+      }
+      break;
+
+    case 'dawn': // 黎明
+      const dg=ctx2d.createLinearGradient(0,0,0,h);
+      dg.addColorStop(0,'#1a0a30');dg.addColorStop(0.5,'#ff8844');dg.addColorStop(1,'#ffcc88');
+      ctx2d.fillStyle=dg;ctx2d.fillRect(0,0,w,h);
+      // 太阳
+      const sg=ctx2d.createRadialGradient(w*0.5,h*0.6,0,w*0.5,h*0.6,w*0.4);
+      sg.addColorStop(0,'rgba(255,255,200,0.8)');sg.addColorStop(1,'rgba(255,100,0,0)');
+      ctx2d.fillStyle=sg;ctx2d.beginPath();ctx2d.arc(w*0.5,h*0.6,w*0.3,0,Math.PI*2);ctx2d.fill();
+      break;
+  }
+
+  // 星空 (所有场景)
+  for(const st of stars){
+    st.b+=st.sp*0.02;const alpha=0.3+Math.sin(st.b)*0.3;
+    ctx2d.fillStyle=`rgba(200,200,255,${alpha})`;
+    ctx2d.fillRect(st.x,st.y,st.s,st.s);
+  }
+
+  // 角色
+  if(s.chars.includes('luna')){
+    ctx2d.fillStyle='#ffaacc';ctx2d.beginPath();ctx2d.arc(w*0.35,h*0.55,20,0,Math.PI*2);ctx2d.fill(); // 头
+    ctx2d.fillStyle='#ff8899';ctx2d.fillRect(w*0.35-15,h*0.55+20,30,40); // 身体
+    ctx2d.fillStyle='#6644aa';ctx2d.fillRect(w*0.35-20,h*0.55+25,6,25); // 左臂
+    ctx2d.fillStyle='#6644aa';ctx2d.fillRect(w*0.35+14,h*0.55+25,6,25); // 右臂
+  }
+  if(s.chars.includes('kai')){
+    ctx2d.fillStyle='#aaddff';ctx2d.beginPath();ctx2d.arc(w*0.6,h*0.55,18,0,Math.PI*2);ctx2d.fill();
+    ctx2d.fillStyle='#556688';ctx2d.fillRect(w*0.6-13,h*0.55+18,26,38);
+    ctx2d.strokeStyle='#888';ctx2d.lineWidth=2;ctx2d.beginPath();ctx2d.arc(w*0.6-5,h*0.53,4,0,Math.PI*2);ctx2d.stroke();
+    ctx2d.beginPath();ctx2d.arc(w*0.6+5,h*0.53,4,0,Math.PI*2);ctx2d.stroke(); // 眼镜
+  }
+  if(s.chars.includes('aria')){
+    ctx2d.fillStyle='rgba(200,200,255,0.6)';ctx2d.beginPath();ctx2d.arc(w*0.5,h*0.4,25,0,Math.PI*2);ctx2d.fill();
+    ctx2d.fillStyle='rgba(200,200,255,0.3)';ctx2d.fillRect(w*0.5-18,h*0.4+25,36,50);
+    // 光环
+    ctx2d.strokeStyle='rgba(255,255,255,0.3)';ctx2d.lineWidth=3;
+    ctx2d.beginPath();ctx2d.arc(w*0.5,h*0.4,35,0,Math.PI*2);ctx2d.stroke();
+  }
+  if(s.chars.includes('shadow')){
+    ctx2d.fillStyle='rgba(100,0,0,0.4)';ctx2d.beginPath();ctx2d.arc(w*0.5,h*0.7,40,0,Math.PI*2);ctx2d.fill();
+    ctx2d.fillStyle='rgba(200,0,0,0.15)';ctx2d.fillRect(w*0.5-55,h*0.7,110,80);
+  }
+
+  // 场景标题
+  ctx2d.fillStyle='rgba(0,0,0,0.5)';ctx2d.fillRect(0,0,w,40);
+  ctx2d.fillStyle='#fff';ctx2d.font='16px Georgia';ctx2d.fillText(`第${s.id+1}幕: ${s.title}`,20,28);
+  ctx2d.fillStyle='#aaa';ctx2d.font='12px monospace';ctx2d.fillText(s.time,w-150,28);
+
+  document.getElementById('subtitles').textContent=s.dialogue;
+  document.getElementById('sceneInfo').textContent=s.mood;
+}
+
+let animId;
+
+function playLoop(){
+  if(playing){
+    sceneTimer+=33;animFrame++;
+    // 推进场景
+    const dur=scenes[currentScene].duration*1000;
+    if(sceneTimer>=dur){nextScene();}
+    drawScene();
+    updateProgress();
+  }
+  animId=requestAnimationFrame(playLoop);
+}
+
+function updateProgress(){
+  let total=0;
+  for(let i=0;i<=currentScene;i++)total+=i<currentScene?scenes[i].duration:sceneTimer/1000;
+  const pct=total/totalDuration*100;
+  document.getElementById('progressBar').style.width=pct+'%';
+  const mins=Math.floor(total/60),secs=Math.floor(total%60);
+  document.getElementById('time').textContent=`${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')} / 15:00`;
+}
+
+function togglePlay(){
+  playing=!playing;
+  document.getElementById('playBtn').textContent=playing?'⏸ 暂停':'▶ 播放';
+  if(playing)playLoop();
+}
+
+function nextScene(){
+  if(currentScene<scenes.length-1){currentScene++;sceneTimer=0;drawScene();updateProgress();}
+  else{playing=false;document.getElementById('playBtn').textContent='▶ 播放';document.getElementById('subtitles').textContent='—— 全剧终 ——';}
+}
+
+function prevScene(){
+  if(currentScene>0){currentScene--;sceneTimer=0;drawScene();updateProgress();}
+}
+
+function seekProgress(e){
+  const rect=e.target.getBoundingClientRect();
+  const pct=(e.clientX-rect.left)/rect.width;
+  let target=0;for(let i=0;i<scenes.length;i++){target+=scenes[i].duration;if(target/totalDuration>=pct){currentScene=i;sceneTimer=0;drawScene();updateProgress();break;}}
+}
+
+function switchTab(tab){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelector(`.tab[onclick*="${tab}"]`).classList.add('active');
+  const content=document.getElementById('content');
+  if(tab==='script'){
+    content.innerHTML='<h2>📜 星之回响 — 完整剧本</h2>'+scenes.map(s=>`<h3>第${s.id+1}幕: ${s.title} (${s.time})</h3><p>【场景】${s.mood}</p><p>【对话】"${s.dialogue}"</p>`).join('');
+  }else if(tab==='characters'){
+    content.innerHTML=`
+<h2>👥 角色介绍</h2>
+<div class="char-card"><div class="avatar">🌙</div><div class="name">Luna / 露娜</div><div class="role">主角 · 17岁星际探索者</div><p style="font-size:12px;color:#aaa;margin-top:8px">勇敢、好奇心旺盛。父母是首批星际移民者，在地球外的殖民地出生。梦想是找到宇宙中其他智慧生命的痕迹。</p></div>
+<div class="char-card"><div class="avatar">🔬</div><div class="name">Kai / 凯</div><div class="role">搭档 · 19岁天才科学家</div><p style="font-size:12px;color:#aaa;margin-top:8px">冷静、理性，有轻微的社交恐惧。信号分析专家，是发现星之回响信号的人。戴着老式眼镜（复古爱好）。</p></div>
+<div class="char-card"><div class="avatar">✨</div><div class="name">Aria / 阿莉亚</div><div class="role">守护者 · 远古文明AI</div><p style="font-size:12px;color:#aaa;margin-top:8px">百万年前文明的最后守护者。温柔而悲伤，承载着整个文明消亡的记忆。通过Luna重新找到了存在的意义。</p></div>
+<div class="char-card"><div class="avatar">🌑</div><div class="name">虚空 / Void</div><div class="role">反派 · 记忆吞噬者</div><p style="font-size:12px;color:#aaa;margin-top:8px">宇宙诞生之初就存在的古老意识，以吞噬文明的集体记忆为生。害怕被遗忘，所以想独占所有知识。</p></div>`;
+  }else if(tab==='storyboard'){
+    content.innerHTML='<h2>🎞 分镜表</h2>'+scenes.map(s=>`<div style="background:rgba(255,255,255,.03);border-radius:8px;padding:12px;margin:8px 0"><b>第${s.id+1}幕</b> <span style="color:#88f">${s.time}</span> — ${s.title}<br><span style="color:#aaa;font-size:12px">${s.mood}</span><br><span style="color:#ffa">"${s.dialogue}"</span><br><span style="color:#888;font-size:11px">背景: ${s.bg} | 角色: ${s.chars} | 时长: ${s.duration}秒</span></div>`).join('');
+  }else{
+    content.innerHTML='<p style="color:#888">点击上方标签查看剧本、角色、分镜</p>';
+  }
+}
+
+// 初始化
+drawScene();
+switchTab('player');
+playLoop();
+
+// 保存剧本文件
+const scriptText=`星之回响 — 15分钟科幻动漫剧本\n${'='.repeat(50)}\n\n`+
+  scenes.map(s=>`第${s.id+1}幕: ${s.title} (${s.time})\n场景: ${s.mood}\n角色: ${s.chars}\n对话: "${s.dialogue}"\n---\n`).join('\n');
+console.log(scriptText);
+</script>
+</body>
+</html>
