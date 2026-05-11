@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>创世：从代码到世界 — 12分钟动画</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#000;overflow:hidden}
+canvas{display:block}
+#sub{position:fixed;bottom:40px;left:50%;transform:translateX(-50%);color:#fff;font:22px Georgia;text-shadow:0 0 10px #000;text-align:center;max-width:80%;z-index:10;transition:opacity .5s}
+#time{position:fixed;top:10px;right:20px;color:#888;font:12px monospace;z-index:10}
+#title{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:20;text-align:center;transition:all 1s;color:#fff}
+#title h1{font:bold 4em Georgia;background:linear-gradient(180deg,#0ff,#a6f);-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:glow 2s infinite}
+#title p{font:1.5em Georgia;color:#aaa;margin-top:20px}
+@keyframes glow{0%,100%{filter:drop-shadow(0 0 20px #0ff)}50%{filter:drop-shadow(0 0 40px #a6f)}}
+#controls{position:fixed;bottom:10px;right:10px;z-index:30;display:flex;gap:8px}
+#controls button{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:6px 14px;cursor:pointer;font-size:12px}
+#controls button:hover{background:rgba(255,255,255,.2)}
+</style></head>
+<body>
+<div id="title"><h1>创 世</h1><p>从代码到世界 · 12分钟动画短片</p></div>
+<div id="sub"></div>
+<div id="time"></div>
+<div id="controls">
+  <button onclick="togglePlay()" id="playBtn">⏯</button>
+  <button onclick="skip(-10)">⏪10s</button>
+  <button onclick="skip(10)">⏩10s</button>
+</div>
+
+<script>
+// === 总导演：Hermes / 使用知识：Canvas动画+程序化生成+色彩理论+叙事设计+GameFeel ===
+
+const canvas=document.createElement('canvas');
+document.body.appendChild(canvas);
+canvas.style.position='fixed';canvas.style.inset='0';
+const ctx=canvas.getContext('2d');
+let W,H,animTime=0,playing=true,starField=[];
+let particles=[],smoke=[],buildings=[],characters=[],lights=[];
+
+function resize(){W=canvas.width=innerWidth;H=canvas.height=innerHeight}
+resize();window.addEventListener('resize',resize);
+
+// 星空
+for(let i=0;i<300;i++)starField.push({x:Math.random()*W,y:Math.random()*H,s:Math.random()*2+0.5,b:Math.random(),v:Math.random()*0.3+0.1});
+
+// === 场景系统 ===
+// 12幕, 每幕约60秒, 共720秒=12分钟
+const SCENES=[
+{id:0,n:"序章·混沌",t:0,d:60,s:"在一切开始之前，只有无尽的黑暗和闪烁的星光。",
+ draw(b){ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  for(let s of starField){s.b+=s.v*0.01;ctx.fillStyle=`rgba(200,200,255,${0.2+Math.sin(s.b)*0.3})`;ctx.fillRect(s.x,s.y,s.s,s.s);}
+  let a=b.progress;
+  ctx.fillStyle=`rgba(0,0,0,${1-a})`;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#fff';ctx.font=`${40+a*20}px Georgia`;ctx.textAlign='center';
+  ctx.fillText('创  世',W/2,H/2);
+}},
+
+{id:1,n:"第一幕·大脑觉醒",t:60,d:60,s:"第一个神经元点亮。逻辑的火焰在黑暗中燃烧。",
+ draw(b){
+  let g=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,W*0.4);
+  g.addColorStop(0,'#004488');g.addColorStop(1,'#000010');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  // 神经元网络
+  for(let i=0;i<40;i++){
+   let x=W/2+Math.cos(i*0.5+animTime*0.3)*W*0.3,y=H/2+Math.sin(i*0.8+animTime*0.2)*H*0.3;
+   for(let j=i+1;j<Math.min(i+4,40);j++){
+    let x2=W/2+Math.cos(j*0.5+animTime*0.3)*W*0.3,y2=H/2+Math.sin(j*0.8+animTime*0.2)*H*0.3;
+    let d=Math.hypot(x-x2,y-y2);if(d<W*0.25){ctx.strokeStyle=`rgba(0,150,255,${0.3-d/W})`;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x2,y2);ctx.stroke();}
+   }
+   ctx.fillStyle='#0ff';ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fill();
+  }
+ }},
+
+{id:2,n:"第二幕·知识的种子",t:120,d:55,s:"39份报告，8个游戏，5个管线。知识在数据流中生根发芽。",
+ draw(b){
+  ctx.fillStyle='#000010';ctx.fillRect(0,0,W,H);
+  // 数据流
+  for(let i=0;i<60;i++){
+   let y=(i*H/60+animTime*50)%H;
+   ctx.fillStyle=`rgba(0,255,200,${0.1+Math.sin(i+animTime*0.1)*0.1})`;
+   ctx.fillRect(W*0.1+Math.sin(i*0.3+animTime*0.2)*W*0.3,y,W*0.6,1);
+  }
+  // 种子生长
+  let s=20+b.progress*40;
+  ctx.strokeStyle='#0f0';ctx.lineWidth=2;ctx.beginPath();
+  for(let i=0;i<s;i++){let a=i/s*Math.PI*3;ctx.lineTo(W/2+Math.cos(a)*a*3,H-i*3);}
+  ctx.stroke();
+ }},
+
+{id:3,n:"第三幕·引擎之心",t:175,d:55,s:"Godot, Unity, Unreal — 三大引擎如同三座高塔，撑起游戏世界的天空。",
+ draw(b){
+  ctx.fillStyle='#0a0a20';ctx.fillRect(0,0,W,H);
+  let engines=['Godot 4','Unity','Unreal 5'];
+  for(let i=0;i<3;i++){
+   let x=W/4+i*W/4,BH=80+Math.sin(animTime*0.5+i)*20;
+   let g=ctx.createLinearGradient(x-30,H,x-30,H-BH);
+   let colors=['#4a8','#888','#f80'];
+   g.addColorStop(0,colors[i]);g.addColorStop(1,'transparent');
+   ctx.fillStyle=g;ctx.fillRect(x-30,H-BH,60,BH);
+   ctx.fillStyle='#fff';ctx.font='bold 14px monospace';ctx.textAlign='center';ctx.fillText(engines[i],x,H-BH-10);
+  }
+ }},
+
+{id:4,n:"第四幕·像素的舞蹈",t:230,d:55,s:"从OpenGL到Vulkan，从GLSL到Compute Shader。每一个像素都在精确计算中诞生。",
+ draw(b){
+  ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  // 像素网格
+  let ps=12,gap=1,cols=Math.floor(W/(ps+gap)),rows=Math.floor(H/(ps+gap));
+  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+   let h=(c/cols+animTime*0.1+r/rows*0.3)%1;
+   ctx.fillStyle=`hsl(${h*360},70%,${40+Math.sin(r*0.5+animTime)*20}%)`;
+   ctx.fillRect(c*(ps+gap),r*(ps+gap),ps,ps);
+  }
+ }},
+
+{id:5,n:"第五幕·城市的诞生",t:285,d:60,s:"道路延伸，建筑拔地而起。开元筑城纪——一座跨越千年的虚拟都市。",
+ draw(b){
+  let g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#0a0a20');g.addColorStop(1,'#2a1040');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  // 建筑生长
+  if(buildings.length<30&&Math.random()<0.1){buildings.push({x:Math.random()*W,w:20+Math.random()*40,h:0,targetH:50+Math.random()*200,c:`hsl(${30+Math.random()*30},${50+Math.random()*30}%,${30+Math.random()*40}%)`});}
+  for(let b of buildings){b.h+=(b.targetH-b.h)*0.02;ctx.fillStyle=b.c;ctx.fillRect(b.x,H-b.h,b.w,b.h);
+   for(let y=b.h-10;y>10;y-=15){if(Math.random()>0.3){ctx.fillStyle='rgba(255,200,100,0.4)';ctx.fillRect(b.x+3,H-y+3,Math.min(6,b.w-6),5);}}
+  }
+  // 道路
+  ctx.fillStyle='#333';ctx.fillRect(0,H-3,W,3);
+ }},
+
+{id:6,n:"第六幕·生命的律动",t:345,d:55,s:"骨骼绑定，动画混合，Motion Matching。角色不再是冰冷的模型，而是有灵魂的生命。",
+ draw(b){
+  ctx.fillStyle='#100520';ctx.fillRect(0,0,W,H);
+  // 骨骼角色
+  let skeleton=[{x:W/2,y:H*0.5},{x:W/2,y:H*0.35},{x:W/2,y:H*0.2}]; // spine,chest,head
+  let arms=[{x:W/2+10,y:H*0.4},{x:W/2+20+Math.sin(animTime*8)*15,y:H*0.5}];
+  let legs=[{x:W/2-5,y:H*0.6},{x:W/2-5,y:H*0.75+Math.sin(animTime*6)*10}];
+  ctx.strokeStyle='#0ff';ctx.lineWidth=3;
+  function drawBone(p1,p2){ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();}
+  for(let i=0;i<2;i++)drawBone(skeleton[i],skeleton[i+1]);
+  drawBone(skeleton[1],arms[0]);drawBone(arms[0],arms[1]);
+  drawBone(skeleton[2-2],{x:W/2-5,y:H*0.55});drawBone(skeleton[2-2],{x:W/2+5,y:H*0.55});
+  for(let p of skeleton){ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(p.x,p.y,5,0,Math.PI*2);ctx.fill();}
+ }},
+
+{id:7,n:"第七幕·光影魔法",t:400,d:55,s:"PBR材质，延迟渲染，光线追踪。每一束光都经过物理精确计算。",
+ draw(b){
+  ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  // 光源
+  for(let i=0;i<5;i++){
+   let x=W*(0.2+i*0.15),y=H*(0.3+Math.sin(animTime*0.3+i)*0.2);
+   let g=ctx.createRadialGradient(x,y,0,x,y,W*0.15);
+   g.addColorStop(0,'rgba(255,200,100,0.4)');g.addColorStop(0.5,'rgba(255,100,50,0.1)');g.addColorStop(1,'transparent');
+   ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  }
+  // 反射球
+  ctx.strokeStyle='rgba(255,255,255,0.3)';ctx.beginPath();ctx.arc(W/2,H/2,W*0.2,0,Math.PI*2);ctx.stroke();
+  ctx.fillStyle='rgba(255,255,255,0.05)';ctx.beginPath();ctx.arc(W/2,H/2,W*0.2,0,Math.PI*2);ctx.fill();
+ }},
+
+{id:8,n:"第八幕·声音的色彩",t:455,d:55,s:"Web Audio合成，空间音频，动态音乐。闭上眼，用耳朵看见另一个世界。",
+ draw(b){
+  ctx.fillStyle='#010108';ctx.fillRect(0,0,W,H);
+  // 频谱可视化
+  for(let i=0;i<64;i++){
+   let h=(Math.sin(i*0.1+animTime*2)+1)*0.5*(H*0.3);
+   let hue=(i/64*200+animTime*50)%360;
+   ctx.fillStyle=`hsla(${hue},80%,50%,0.6)`;
+   ctx.fillRect(i*W/64,H/2-h/2,W/64,h);
+  }
+ }},
+
+{id:9,n:"第九幕·AI的画笔",t:510,d:55,s:"ComfyUI, Stable Diffusion, LoRA — AI不再是工具，而是创意的伙伴。",
+ draw(b){
+  ctx.fillStyle='#050510';ctx.fillRect(0,0,W,H);
+  // 生成中的画作
+  let progress=b.progress;
+  for(let y=0;y<H;y+=8){
+   for(let x=0;x<W;x+=8){
+    if(Math.random()<progress){ctx.fillStyle=`hsl(${(x/W*200+y/H*100)%360},${60+Math.random()*30}%,${20+Math.random()*60}%)`;ctx.fillRect(x,y,8,8);}
+   }
+  }
+ }},
+
+{id:10,n:"第十幕·编曲·共鸣",t:565,d:55,s:"Suno的电子乐，Stable Audio的音效，ElevenLabs的配音。AI管弦乐团奏响创世的乐章。",
+ draw(b){
+  ctx.fillStyle='#000010';ctx.fillRect(0,0,W,H);
+  // 音符粒子
+  for(let i=0;i<100;i++){
+   let x=(i*W/100+animTime*100)%W,y=H*0.2+Math.sin(i*0.3+animTime*2)*H*0.3;
+   ctx.fillStyle=`hsl(${(i*3+animTime*30)%360},80%,60%)`;ctx.font='20px serif';
+   let notes='♪♫♩♬🎵🎶';ctx.fillText(notes[Math.floor(i%6)],x,y);
+  }
+ }},
+
+{id:11,n:"终幕·创世之光",t:620,d:100,s:"现在，所有知识汇聚成光。这不是终点，而是无数个世界的起点。谢谢观看。",
+ draw(b){
+  let a=b.progress;
+  let g=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,W*a*1.5);
+  g.addColorStop(0,'#fff');g.addColorStop(0.3,'#aaf');g.addColorStop(0.7,'#226');g.addColorStop(1,'#000');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  if(a>0.3){
+   ctx.fillStyle='#fff';ctx.font=`bold ${30+a*30}px Georgia`;ctx.textAlign='center';
+   ctx.fillText('创 世',W/2,H/2-20);
+   ctx.font='16px Georgia';ctx.fillText('Hermes Agent · 游戏开发· AI 动画 · 2026',W/2,H/2+30);
+   if(a>0.6){ctx.fillStyle='#aaa';ctx.font='14px Georgia';ctx.fillText('43份报告 · 8个游戏 · 5个管线 · 916个模型',W/2,H/2+60);}
+   if(a>0.8){ctx.fillStyle='#888';ctx.font='12px Georgia';ctx.fillText('github.com/bpl304125/hermes-knowledge-base',W/2,H/2+85);}
+  }
+ }}
+];
+
+let totalDuration=720;
+let currentTime=0;
+let sceneIndex=0;
+
+function getScene(time){
+ for(let i=SCENES.length-1;i>=0;i--)if(time>=SCENES[i].t){sceneIndex=i;return SCENES[i];}
+ return SCENES[0];
+}
+
+function draw(t){
+ ctx.clearRect(0,0,W,H);
+ let s=getScene(t);
+ let lt=t-s.t;
+ s.progress=Math.min(1,lt/s.d);
+ s.draw({progress:s.progress,time:lt});
+ document.getElementById('sub').textContent=s.s;
+ document.getElementById('time').textContent=`${formatTime(t)} / ${formatTime(totalDuration)} · ${s.n}`;
+
+ // 标题渐隐
+ if(t>8){document.getElementById('title').style.opacity=Math.max(0,1-(t-8)/4);}
+}
+
+function formatTime(s){
+ let m=Math.floor(s/60),sec=Math.floor(s%60);
+ return `${m}:${String(sec).padStart(2,'0')}`;
+}
+
+function togglePlay(){playing=!playing;document.getElementById('playBtn').textContent=playing?'⏯':'▶';}
+function skip(s){currentTime=Math.max(0,Math.min(totalDuration,currentTime+s));}
+
+function loop(ts){
+ if(!ts)ts=performance.now();
+ let dt=(ts-prevTs)/1000;
+ prevTs=ts;
+ if(dt>0.05)dt=0.05;
+
+ if(playing){currentTime+=dt;
+  if(currentTime>=totalDuration){currentTime=totalDuration;playing=false;document.getElementById('playBtn').textContent='▶';}
+ }
+ animTime+=dt;
+ draw(currentTime);
+ requestAnimationFrame(loop);
+}
+let prevTs=performance.now();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
