@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ORBIT GUARDIAN</title>
+    <style>
+        body { margin: 0; background-color: #000; font-family: Arial, sans-serif; }
+        canvas { display: block; }
+        #start-screen, #game-over { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: #fff; }
+        #hud { position: absolute; top: 10px; left: 10px; color: #fff; font-size: 24px; }
+        #planet-health { position: absolute; bottom: 10px; left: 10px; width: 200px; height: 20px; background-color: #f00; border: 1px solid #fff; }
+        #planet-health-bar { height: 100%; background-color: #0f0; }
+    </style>
+</head>
+<body>
+    <div id="start-screen">
+        <h1>ORBIT GUARDIAN</h1>
+        <button id="start-button">开始游戏</button>
+    </div>
+    <div id="hud" style="display: none;">
+        <span id="score">得分: 0</span>
+        <span id="combo">连击: 0</span>
+    </div>
+    <div id="planet-health" style="display: none;">
+        <div id="planet-health-bar"></div>
+    </div>
+    <div id="game-over" style="display: none;">
+        <h1>游戏结束</h1>
+        <span id="final-score"></span>
+        <button id="restart-button">重新开始</button>
+    </div>
+
+    <script type="importmap">
+        {"imports":{"three":"https://unpkg.com/three@0.170.0/build/three.module.js"}}
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        let scene, camera, renderer, planet, rings, projectiles, enemies;
+        let score = 0, combo = 0, planetHealth = 100;
+        let ringCooldowns = [0, 0, 0];
+        let audioCtx, pewSound, explosionSound, alertSound;
+        let startScreen, hud, planetHealthBar, gameOverScreen;
+
+        async function init() {
+            try {
+                audioCtx = new AudioContext();
+                const pewBuffer = await fetch('https://example.com/pew.mp3').then(response => response.arrayBuffer()).then(buffer => audioCtx.decodeAudioData(buffer));
+                pewSound = audioCtx.createBufferSource();
+                pewSound.buffer = pewBuffer;
+                pewSound.connect(audioCtx.destination);
+
+                const explosionBuffer = await fetch('https://example.com/explosion.mp3').then(response => response.arrayBuffer()).then(buffer => audioCtx.decodeAudioData(buffer));
+                explosionSound = audioCtx.createBufferSource();
+                explosionSound.buffer = explosionBuffer;
+                explosionSound.connect(audioCtx.destination);
+
+                const alertBuffer = await fetch('https://example.com/alert.mp3').then(response => response.arrayBuffer()).then(buffer => audioCtx.decodeAudioData(buffer));
+                alertSound = audioCtx.createBufferSource();
+                alertSound.buffer = alertBuffer;
+                alertSound.connect(audioCtx.destination);
+            } catch (e) {
+                console.error('Audio init failed:', e);
+            }
+
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            planet = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, emissive: 0xffffff }));
+            scene.add(planet);
+
+            rings = [];
+            for (let i = 0; i < 3; i++) {
+                const ring = new THREE.Mesh(new THREE.TorusGeometry(2 + i, 0.1, 16, 100), new THREE.MeshBasicMaterial({ color: [0x00ffff, 0xff00ff, 0xffff00][i] }));
+                scene.add(ring);
+                rings.push(ring);
+            }
+
+            projectiles = [];
+            enemies = [];
+
+            startScreen = document.getElementById('start-screen');
+            hud = document.getElementById('hud');
+            planetHealthBar = document.getElementById('planet-health-bar');
+            gameOverScreen = document.getElementById('game-over');
+
+            document.getElementById('start-button').addEventListener('click', startGame);
+            document.getElementById('restart-button').addEventListener('click', restartGame);
+            document.addEventListener('click', onClick);
+            document.addEventListener('touchstart', onClick);
+
+            window.addEventListener('resize', onResize);
+        }
+
+        function startGame() {
+            startScreen.style.display = 'none';
+            hud.style.display = 'block';
+            planetHealthBar.parentNode.style.display = 'block';
+            score = 0;
+            combo = 0;
+            planetHealth = 100;
+            ringCooldowns = [0, 0, 0];
+            updateHUD();
+            updatePlanetHealth();
+            animate();
+        }
+
+        function restartGame() {
+            gameOverScreen.style.display = 'none';
+            startGame();
+        }
+
+        function onClick(event) {
+            if (hud.style.display === 'none') return;
+            const raycaster = new THREE.Raycaster();
+            const mouse = new THREE.Vector2();
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(rings);
+            if (intersects.length > 0) {
+                const ringIndex = rings.indexOf(intersects[0].object);
+                if (ringCooldowns[ringIndex] === 0) {
+                    fireProjectile(ringIndex);
+                    ringCooldowns[ringIndex] = 30; // 30 frames cooldown
+                }
+            }
+        }
+
+        function fireProjectile(ringIndex) {
+            const projectile = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 16), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+            projectile.position.copy(rings[ringIndex].position);
+            scene.add(projectile);
+            projectiles.push({ object: projectile, ringIndex });
+            pewSound.start(audioCtx.currentTime);
+        }
+
+        function updateProjectiles() {
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const projectile = projectiles[i];
+                projectile.object.position.add(new THREE.Vector3(0, 0.1, 0));
+                if (projectile.object.position.length() > 10) {
+                    scene.remove(projectile.object);
+                    projectiles.splice(i, 1);
+                }
+            }
+        }
+
+        function updateEnemies() {
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const enemy = enemies[i];
+                enemy.object.position.add(enemy.velocity);
+                if (enemy.object.position.length() < 1) {
+                    planetHealth -= 10;
+                    updatePlanetHealth();
+                    alertSound.start(audioCtx.currentTime);
+                    scene.remove(enemy.object);
+                    enemies.splice(i, 1);
+                    combo = 0;
+                }
+            }
+        }
+
+        function checkCollisions() {
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const projectile = projectiles[i];
+                for (let j = enemies.length - 1; j >= 0; j--) {
+                    const enemy = enemies[j];
+                    if (projectile.object.position.distanceTo(enemy.object.position) < 0.2) {
+                        score++;
+                        combo++;
+                        updateHUD();
+                        explosionSound.start(audioCtx.currentTime);
+                        scene.remove(projectile.object);
+                        scene.remove(enemy.object);
+                        projectiles.splice(i, 1);
+                        enemies.splice(j, 1);
+                        createExplosion(projectile.object.position);
+                        break;
+                    }
+                }
+            }
+        }
+
+        function createExplosion(position) {
+            for (let i = 0; i < 10; i++) {
+                const particle = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+                particle.position.copy(position);
+                scene.add(particle);
+                const velocity = new THREE.Vector3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).normalize().multiplyScalar(0.1);
+                setTimeout(() => {
+                    scene.remove(particle);
+                }, 1000);
+            }
+        }
+
+        function updateHUD() {
+            document.getElementById('score').innerText = `得分: ${score}`;
+            document.getElementById('combo').innerText = `连击: ${combo}`;
+        }
+
+        function updatePlanetHealth() {
+            planetHealthBar.style.width = `${planetHealth}%`;
+            if (planetHealth <= 0) {
+                gameOver();
+            }
+        }
+
+        function gameOver() {
+            hud.style.display = 'none';
+            planetHealthBar.parentNode.style.display = 'none';
+            gameOverScreen.style.display = 'block';
+            document.getElementById('final-score').innerText = `最终得分: ${score}`;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            updateProjectiles();
+            updateEnemies();
+            checkCollisions();
+
+            for (let i = 0; i < ringCooldowns.length; i++) {
+                if (ringCooldowns[i] > 0) ringCooldowns[i]--;
+            }
+
+            if (Math.random() < 0.05) {
+                spawnEnemy();
+            }
+
+            camera.lookAt(planet.position);
+            camera.position.add(new THREE.Vector3(0, 0, 0.1));
+            renderer.render(scene, camera);
+        }
+
+        function spawnEnemy() {
+            const enemyGeometry = new THREE.BufferGeometry();
+            const positions = new Float32Array([-0.5, -0.5, 0, 0.5, -0.5, 0, 0, 0.5, 0]);
+            enemyGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const enemy = new THREE.Mesh(enemyGeometry, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+            const direction = new THREE.Vector3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).normalize();
+            enemy.position.copy(direction.multiplyScalar(10));
+            scene.add(enemy);
+            enemies.push({ object: enemy, velocity: direction.multiplyScalar(-0.1) });
+        }
+
+        function onResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        init();
+    </script>
+</body>
+</html>
