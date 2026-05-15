@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>虚空堆叠者 VOID STACKER</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'Courier New',monospace;color:#fff}
+canvas{display:block}
+#ui{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10}
+#hud{position:absolute;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;opacity:0;transition:opacity .5s}
+.hud-box{background:rgba(0,0,0,.7);border:1px solid #0ff;padding:6px 12px;font-size:14px;min-width:80px;text-align:center;box-shadow:0 0 10px rgba(0,255,255,.3)}
+.hud-box .label{color:#888;font-size:10px;display:block}
+.hud-box .value{color:#0ff;font-size:18px;font-weight:bold}
+.hud-box.magenta .value{color:#f0f}
+.hud-box.magenta{border-color:#f0f;box-shadow:0 0 10px rgba(255,0,255,.3)}
+.hud-box.yellow .value{color:#ff0}
+.hud-box.yellow{border-color:#ff0;box-shadow:0 0 10px rgba(255,255,0,.3)}
+#startScreen,#gameOverScreen{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:auto;background:rgba(0,0,0,.85);z-index:20}
+#startScreen h1{font-size:clamp(28px,6vw,60px);color:#0ff;text-shadow:0 0 20px #0ff,0 0 40px #0ff,0 0 80px #08f;margin-bottom:10px;letter-spacing:4px}
+#startScreen .subtitle{font-size:clamp(12px,2.5vw,20px);color:#f0f;text-shadow:0 0 10px #f0f;margin-bottom:40px}
+.btn{background:transparent;border:2px solid #0ff;color:#0ff;padding:14px 40px;font-size:18px;font-family:inherit;cursor:pointer;letter-spacing:2px;text-transform:uppercase;transition:all .3s;box-shadow:0 0 15px rgba(0,255,255,.3);margin:8px}
+.btn:hover{background:#0ff;color:#000;box-shadow:0 0 30px rgba(0,255,255,.6)}
+#gameOverScreen h1{font-size:clamp(24px,5vw,48px);color:#f00;text-shadow:0 0 20px #f00,0 0 40px #f00;margin-bottom:20px}
+#gameOverScreen .stats{margin:20px 0;text-align:center;line-height:2}
+#gameOverScreen .stats span{color:#ff0;font-size:20px}
+.controls-info{font-size:11px;color:#666;margin-top:30px;text-align:center;line-height:1.8}
+.controls-info kbd{border:1px solid #444;padding:2px 6px;color:#0ff;font-size:10px}
+#comboPopup{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:40px;color:#ff0;text-shadow:0 0 20px #ff0;opacity:0;pointer-events:none;transition:all .5s;z-index:15}
+#nextBlockLabel{position:absolute;top:10px;right:10px;color:#888;font-size:11px;opacity:0}
+#mobileControls{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);display:none;gap:10px;pointer-events:auto;z-index:25}
+.mBtn{width:55px;height:55px;border-radius:50%;border:2px solid #0ff;background:rgba(0,255,255,.1);color:#0ff;font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none;-webkit-user-select:none}
+.mBtn:active{background:rgba(0,255,255,.4)}
+.mBtn.drop{border-color:#f0f;color:#f0f;background:rgba(255,0,255,.1)}
+.mBtn.drop:active{background:rgba(255,0,255,.4)}
+@media(max-width:768px){.controls-info{display:none}#mobileControls{display:flex}}
+</style>
+</head>
+<body>
+<div id="ui">
+<div id="hud">
+<div class="hud-box"><span class="label">分数</span><span class="value" id="scoreVal">0</span></div>
+<div class="hud-box magenta"><span class="label">等级</span><span class="value" id="levelVal">1</span></div>
+<div class="hud-box yellow"><span class="label">连击</span><span class="value" id="comboVal">0</span></div>
+<div class="hud-box"><span class="label">已消层</span><span class="value" id="linesVal">0</span></div>
+</div>
+<div id="comboPopup"></div>
+<div id="startScreen">
+<h1>虚空堆叠者</h1>
+<div class="subtitle">VOID STACKER</div>
+<button class="btn" id="startBtn">开始游戏</button>
+<div class="controls-info">
+<kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> 移动方块<br>
+<kbd>R</kbd> 旋转 &nbsp; <kbd>空格</kbd> 快速下落<br>
+鼠标移动控制位置 / 点击旋转<br>
+移动端：滑动移动 / 点击旋转
+</div>
+</div>
+<div id="gameOverScreen" style="display:none">
+<h1>游戏结束</h1>
+<div class="stats">
+最终分数：<span id="finalScore">0</span><br>
+最高等级：<span id="finalLevel">1</span><br>
+消除层数：<span id="finalLines">0</span><br>
+最大连击：<span id="finalCombo">0</span>
+</div>
+<button class="btn" id="restartBtn">重新开始</button>
+</div>
+</div>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.170.0/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+
+const GRID=6,CELL=1,MAX_H=14;
+const COLORS=[0x00ffff,0xff00ff,0xffff00,0x00ff88,0xff4444,0x4488ff,0xff8800];
+const SHAPES=[
+[[0,0]],
+[[0,0],[1,0]],
+[[0,0],[0,1]],
+[[0,0],[1,0],[0,1]],
+[[0,0],[1,0],[2,0]],
+[[0,0],[0,1],[0,2]],
+[[0,0],[1,0],[1,1]],
+[[0,0],[0,1],[1,0]],
+[[0,0],[1,0],[2,0],[1,1]],
+[[0,0],[0,1],[1,0],[0,-1]],
+[[0,0],[1,0],[0,1],[1,1]],
+[[0,0],[1,0],[2,0],[3,0]],
+[[0,0],[0,1],[0,2],[0,3]],
+];
+
+let scene,camera,renderer,clock;
+let grid,placedBlocks=[],activeBlock=null,ghostBlock=null;
+let particles=[];
+let score=0,level=1,lines=0,combo=0,maxCombo=0;
+let gameRunning=false,dropTimer=0,dropInterval=1.2;
+let audioCtx=null;
+let mouseX=0,mouseZ=0;
+let touchStartX=0,touchStartY=0,touchStartTime=0;
+let nextShapeIdx=-1,currentColor=0;
+let gridData={};
+let cameraAngle=0,cameraTargetAngle=0;
+let shakeAmount=0;
+
+function initAudio(){
+try{audioCtx=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}
+}
+
+function playSound(type){
+if(!audioCtx)return;
+try{
+if(audioCtx.state==='suspended')audioCtx.resume();
+const t=audioCtx.currentTime;
+if(type==='drop'){
+const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+o.type='sine';o.frequency.setValueAtTime(80,t);o.frequency.exponentialRampToValueAtTime(30,t+.2);
+g.gain.setValueAtTime(.3,t);g.gain.exponentialRampToValueAtTime(.001,t+.3);
+o.connect(g);g.connect(audioCtx.destination);o.start(t);o.stop(t+.3);
+}else if(type==='clear'){
+[523,659,784,1047].forEach((f,i)=>{
+const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+o.type='sine';o.frequency.value=f;
+g.gain.setValueAtTime(0,t+i*.08);g.gain.linearRampToValueAtTime(.15,t+i*.08+.02);
+g.gain.exponentialRampToValueAtTime(.001,t+i*.08+.4);
+o.connect(g);g.connect(audioCtx.destination);o.start(t+i*.08);o.stop(t+i*.08+.5);
+});
+}else if(type==='levelup'){
+[523,659,784,1047,1319].forEach((f,i)=>{
+const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+o.type='square';o.frequency.value=f;
+g.gain.setValueAtTime(0,t+i*.1);g.gain.linearRampToValueAtTime(.12,t+i*.1+.02);
+g.gain.exponentialRampToValueAtTime(.001,t+i*.1+.5);
+o.connect(g);g.connect(audioCtx.destination);o.start(t+i*.1);o.stop(t+i*.1+.6);
+});
+}else if(type==='gameover'){
+[400,350,300,200].forEach((f,i)=>{
+const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+o.type='sawtooth';o.frequency.value=f;
+g.gain.setValueAtTime(.15,t+i*.2);g.gain.exponentialRampToValueAtTime(.001,t+i*.2+.4);
+o.connect(g);g.connect(audioCtx.destination);o.start(t+i*.2);o.stop(t+i*.2+.5);
+});
+}else if(type==='rotate'){
+const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+o.type='sine';o.frequency.setValueAtTime(600,t);o.frequency.exponentialRampToValueAtTime(900,t+.05);
+g.gain.setValueAtTime(.1,t);g.gain.exponentialRampToValueAtTime(.001,t+.08);
+o.connect(g);g.connect(audioCtx.destination);o.start(t);o.stop(t+.08);
+}
+}catch(e){}
+}
+
+function init(){
+scene=new THREE.Scene();
+scene.fog=new THREE.FogExp2(0x000000,.015);
+clock=new THREE.Clock();
+
+camera=new THREE.PerspectiveCamera(50,window.innerWidth/window.innerHeight,.1,100);
+updateCameraPos();
+
+renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
+renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setClearColor(0x000005);
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.2;
+document.body.insertBefore(renderer.domElement,document.getElementById('ui'));
+
+scene.add(new THREE.AmbientLight(0x222244,.5));
+const dl=new THREE.DirectionalLight(0xffffff,.8);
+dl.position.set(5,15,5);scene.add(dl);
+const pl1=new THREE.PointLight(0x00ffff,2,30);pl1.position.set(-5,8,-5);scene.add(pl1);
+const pl2=new THREE.PointLight(0xff00ff,2,30);pl2.position.set(5,8,5);scene.add(pl2);
+const pl3=new THREE.PointLight(0xffff00,1,25);pl3.position.set(0,12,0);scene.add(pl3);
+
+createGrid();
+createStarfield();
+
+window.addEventListener('resize',onResize);
+document.addEventListener('keydown',onKeyDown);
+document.addEventListener('mousemove',onMouseMove);
+renderer.domElement.addEventListener('click',onCanvasClick);
+renderer.domElement.addEventListener('touchstart',onTouchStart,{passive:false});
+renderer.domElement.addEventListener('touchmove',onTouchMove,{passive:false});
+renderer.domElement.addEventListener('touchend',onTouchEnd,{passive:false});
+
+document.getElementById('startBtn').addEventListener('click',startGame);
+document.getElementById('restartBtn').addEventListener('click',startGame);
+
+animate();
+}
+
+function createGrid(){
+const g=new THREE.Group();
+const half=GRID*CELL/2;
+const gridMat=new THREE.LineBasicMaterial({color:0x004444,transparent:true,opacity:.4});
+for(let i=0;i<=GRID;i++){
+const pts=[new THREE.Vector3(-half,0,-half+i*CELL),new THREE.Vector3(half,0,-half+i*CELL)];
+g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),gridMat));
+const pts2=[new THREE.Vector3(-half+i*CELL,0,-half),new THREE.Vector3(-half+i*CELL,0,half)];
+g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts2),gridMat));
+}
+const edgeMat=new THREE.LineBasicMaterial({color:0x00ffff,transparent:true,opacity:.7});
+const edgePts=[
+new THREE.Vector3(-half,0,-half),new THREE.Vector3(half,0,-half),
+new THREE.Vector3(half,0,half),new THREE.Vector3(-half,0,half),new THREE.Vector3(-half,0,-half)
+];
+g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(edgePts),edgeMat));
+
+for(let y=1;y<=MAX_H;y++){
+const cMat=new THREE.LineBasicMaterial({color:0x220022,transparent:true,opacity:.15});
+const cp=[
+new THREE.Vector3(-half,y,-half),new THREE.Vector3(half,y,-half),
+new THREE.Vector3(half,y,half),new THREE.Vector3(-half,y,half),new THREE.Vector3(-half,y,-half)
+];
+g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(cp),cMat));
+}
+
+const wallMat=new THREE.LineBasicMaterial({color:0x003333,transparent:true,opacity:.2});
+for(let y=0;y<=MAX_H;y+=2){
+[-half,half].forEach(x=>{
+const wp=[new THREE.Vector3(x,y,-half),new THREE.Vector3(x,y,half)];
+g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(wp),wallMat));
+});
+[-half,half].forEach(z=>{
+const wp=[new THREE.Vector3(-half,y,z),new THREE.Vector3(half,y,z)];
+g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(wp),wallMat));
+});
+}
+
+scene.add(g);
+grid=g;
+}
+
+function createStarfield(){
+const geo=new THREE.BufferGeometry();
+const verts=[];
+for(let i=0;i<2000;i++){
+verts.push((Math.random()-.5)*80,Math.random()*40+5,(Math.random()-.5)*80);
+}
+geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+const mat=new THREE.PointsMaterial({color:0x444466,size:.15,transparent:true,opacity:.6});
+scene.add(new THREE.Points(geo,mat));
+}
+
+function getGridKey(x,y,z){return`${x},${y},${z}`}
+
+function isOccupied(gx,gy,gz){
+if(gx<0||gx>=GRID||gz<0||gz>=GRID||gy<0)return true;
+if(gy>=MAX_H)return true;
+return!!gridData[getGridKey(gx,gy,gz)];
+}
+
+function worldToGrid(wx,wz){
+const half=GRID*CELL/2;
+return{
+gx:Math.floor((wx+half)/CELL),
+gz:Math.floor((wz+half)/CELL)
+};
+}
+
+function gridToWorld(gx,gz){
+const half=GRID*CELL/2;
+return{
+wx:gx*CELL+CELL/2-half,
+wz:gz*CELL+CELL/2-half
+};
+}
+
+function createBlockMesh(color,isGhost=false){
+const group=new THREE.Group();
+const half=CELL/2-.04;
+const geo=new THREE.BoxGeometry(half*2,half*2,half*2);
+
+if(isGhost){
+const mat=new THREE.MeshBasicMaterial({color:color,transparent:true,opacity:.15,wireframe:true});
+const mesh=new THREE.Mesh(geo,mat);
+group.add(mesh);
+}else{
+const mat=new THREE.MeshPhongMaterial({
+color:color,emissive:color,emissiveIntensity:.3,
+transparent:true,opacity:.85,
+shininess:100,specular:0xffffff
+});
+const mesh=new THREE.Mesh(geo,mat);
+group.add(mesh);
+
+const wireMat=new THREE.MeshBasicMaterial({color:color,wireframe:true,transparent:true,opacity:.6});
+const wire=new THREE.Mesh(new THREE.BoxGeometry(half*2+.02,half*2+.02,half*2+.02),wireMat);
+group.add(wire);
+
+const glowMat=new THREE.MeshBasicMaterial({color:color,transparent:true,opacity:.08});
+const glow=new THREE.Mesh(new THREE.BoxGeometry(half*2+.2,half*2+.2,half*2+.2),glowMat);
+group.add(glow);
+}
+return group;
+}
+
+function spawnBlock(){
+const shapeIdx=nextShapeIdx>=0?nextShapeIdx:Math.floor(Math.random()*SHAPES.length);
+nextShapeIdx=Math.floor(Math.random()*SHAPES.length);
+currentColor=COLORS[Math.floor(Math.random()*COLORS.length)];
+
+const shape=SHAPES[shapeIdx];
+const half=GRID*CELL/2;
+const startGx=Math.floor(GRID/2)-1;
+const startGz=Math.floor(GRID/2)-1;
+
+activeBlock={
+shape:shape.map(s=>[...s]),
+color:currentColor,
+gx:startGx,
+gz:startGz,
+gy:MAX_H,
+mesh:null,
+ghostMesh:null,
+dropping:false,
+dropSpeed:0
+};
+
+const pos=gridToWorld(startGx,startGz);
+activeBlock.mesh=createBlockMesh(currentColor,false);
+activeBlock.mesh.position.set(pos.wx,MAX_H*CELL+CELL/2,pos.wz);
+scene.add(activeBlock.mesh);
+
+updateGhost();
+}
+
+function updateGhost(){
+if(!activeBlock)return;
+if(activeBlock.ghostMesh){
+scene.remove(activeBlock.ghostMesh);
+activeBlock.ghostMesh=null;
+}
+
+let ghostY=activeBlock.gy;
+while(canPlace(activeBlock.shape,activeBlock.gx,ghostY-1,activeBlock.gz)){
+ghostY--;
+}
+
+const pos=gridToWorld(activeBlock.gx,activeBlock.gz);
+activeBlock.ghostMesh=createBlockMesh(currentColor,true);
+activeBlock.ghostMesh.position.set(pos.wx,ghostY*CELL+CELL/2,pos.wz);
+scene.add(activeBlock.ghostMesh);
+}
+
+function canPlace(shape,gx,gy,gz){
+for(const[dx,dz]of shape){
+const tx=gx+dx,tz=gz+dz;
+if(tx<0||tx>=GRID||tz<0||tz>=GRID)return false;
+if(gy<0)return false;
+for(let dy=0;dy<1;dy++){
+const ty=gy+dy;
+if(ty<0)return false;
+if(gridData[getGridKey(tx,ty,tz)])return false;
+}
+}
+return true;
+}
+
+function placeBlock(){
+if(!activeBlock)return;
+const shape=activeBlock.shape;
+const pos=gridToWorld(activeBlock.gx,activeBlock.gz);
+
+for(const[dx,dz]of shape){
+const tx=activeBlock.gx+dx,tz=activeBlock.gz+dz;
+const ty=activeBlock.gy;
+if(ty<0||ty>=MAX_H)continue;
+const key=getGridKey(tx,ty,tz);
+const wp=gridToWorld(tx,tz);
+const mesh=createBlockMesh(activeBlock.color,false);
+mesh.position.set(wp.wx,ty*CELL+CELL/2,wp.wz);
+scene.add(mesh);
+gridData[key]={mesh,color:activeBlock.color};
+}
+
+playSound('drop');
+shakeAmount=.15;
+
+if(activeBlock.mesh)scene.remove(activeBlock.mesh);
+if(activeBlock.ghostMesh)scene.remove(activeBlock.ghostMesh);
+activeBlock=null;
+
+checkLayers();
+}
+
+function checkLayers(){
+let clearedLayers=[];
+for(let y=0;y<MAX_H;y++){
+let full=true;
+for(let x=0;x<GRID;x++){
+for(let z=0;z<GRID;z++){
+if(!gridData[getGridKey(x,y,z)]){full=false;break;}
+}
+if(!full)break;
+}
+if(full)clearedLayers.push(y);
+}
+
+if(clearedLayers.length>0){
+combo++;
+if(combo>maxCombo)maxCombo=combo;
+lines+=clearedLayers.length;
+
+const baseScore=clearedLayers.length*GRID*GRID*10;
+const multiplier=1+combo*.5;
+score+=Math.floor(baseScore*multiplier*level);
+
+if(combo>1){
+showCombo(combo);
+}
+
+const newLevel=Math.floor(lines/3)+1;
+if(newLevel>level){
+level=newLevel;
+dropInterval=Math.max(.2,1.2-(level-1)*.1);
+playSound('levelup');
+}else{
+playSound('clear');
+}
+
+for(const y of clearedLayers){
+spawnLayerParticles(y);
+clearLayer(y);
+}
+
+updateHUD();
+}else{
+combo=0;
+}
+
+if(checkGameOver()){
+endGame();
+return;
+}
+
+setTimeout(()=>{
+if(gameRunning)spawnBlock();
+},clearedLayers.length>0?300:100);
+}
+
+function clearLayer(y){
+for(let x=0;x<GRID;x++){
+for(let z=0;z<GRID;z++){
+const key=getGridKey(x,y,z);
+if(gridData[key]){
+scene.remove(gridData[key].mesh);
+delete gridData[key];
+}
+}
+}
+for(let yy=y+1;yy<MAX_H;yy++){
+for(let x=0;x<GRID;x++){
+for(let z=0;z<GRID;z++){
+const key=getGridKey(x,yy,z);
+if(gridData[key]){
+const newKey=getGridKey(x,yy-1,z);
+const entry=gridData[key];
+entry.mesh.position.y-=CELL;
+gridData[newKey]=entry;
+delete gridData[key];
+}
+}
+}
+}
+}
+
+function spawnLayerParticles(y){
+const half=GRID*CELL/2;
+for(let i=0;i<80;i++){
+const x=(Math.random()-.5)*GRID*CELL;
+const z=(Math.random()-.5)*GRID*CELL;
+const yy=y*CELL+CELL/2;
+const color=new THREE.Color(COLORS[Math.floor(Math.random()*COLORS.length)]);
+const geo=new THREE.BoxGeometry(.08,.08,.08);
+const mat=new THREE.MeshBasicMaterial({color:color,transparent:true,opacity:1});
+const mesh=new THREE.Mesh(geo,mat);
+mesh.position.set(x,yy,z);
+scene.add(mesh);
+particles.push({
+mesh,
+vx:(Math.random()-.5)*8,
+vy:Math.random()*6+2,
+vz:(Math.random()-.5)*8,
+life:1,
+decay:.01+Math.random()*.02,
+rotSpeed:(Math.random()-.5)*10
+});
+}
+}
+
+function updateParticles(dt){
+for(let i=particles.length-1;i>=0;i--){
+const p=particles[i];
+p.mesh.position.x+=p.vx*dt;
+p.mesh.position.y+=p.vy*dt;
+p.mesh.position.z+=p.vz*dt;
+p.vy-=15*dt;
+p.life-=p.decay;
+p.mesh.material.opacity=Math.max(0,p.life);
+p.mesh.rotation.x+=p.rotSpeed*dt;
+p.mesh.rotation.y+=p.rotSpeed*dt;
+if(p.life<=0){
+scene.remove(p.mesh);
+particles.splice(i,1);
+}
+}
+}
+
+function showCombo(c){
+const el=document.getElementById('comboPopup');
+el.textContent=`${c} 连击！`;
+el.style.opacity='1';
+el.style.transform='translate(-50%,-50%) scale(1.2)';
+setTimeout(()=>{
+el.style.opacity='0';
+el.style.transform='translate(-50%,-50%) scale(0.8)';
+},800);
+}
+
+function checkGameOver(){
+for(let x=0;x<GRID;x++){
+for(let z=0;z<GRID;z++){
+if(gridData[getGridKey(x,MAX_H-1,z)])return true;
+}
+}
+return false;
+}
+
+function endGame(){
+gameRunning=false;
+playSound('gameover');
+document.getElementById('finalScore').textContent=score;
+document.getElementById('finalLevel').textContent=level;
+document.getElementById('finalLines').textContent=lines;
+document.getElementById('finalCombo').textContent=maxCombo;
+document.getElementById('gameOverScreen').style.display='flex';
+document.getElementById('hud').style.opacity='0';
+}
+
+function startGame(){
+document.getElementById('startScreen').style.display='none';
+document.getElementById('gameOverScreen').style.display='none';
+document.getElementById('hud').style.opacity='1';
+
+Object.values(gridData).forEach(e=>scene.remove(e.mesh));
+gridData={};
+if(activeBlock){
+if(activeBlock.mesh)scene.remove(activeBlock.mesh);
+if(activeBlock.ghostMesh)scene.remove(activeBlock.ghostMesh);
+}
+activeBlock=null;
+particles.forEach(p=>scene.remove(p.mesh));
+particles=[];
+
+score=0;level=1;lines=0;combo=0;maxCombo=0;
+dropTimer=0;dropInterval=1.2;
+gameRunning=true;
+nextShapeIdx=-1;
+
+updateHUD();
+spawnBlock();
+if(!audioCtx)initAudio();
+}
+
+function updateHUD(){
+document.getElementById('scoreVal').textContent=score;
+document.getElementById('levelVal').textContent=level;
+document.getElementById('comboVal').textContent=combo;
+document.getElementById('linesVal').textContent=lines;
+}
+
+function updateCameraPos(){
+const aspect=window.innerWidth/window.innerHeight;
+const dist=Math.max(GRID,8)*1.1;
+camera.position.set(0,dist*1.3,dist*.5);
+camera.lookAt(0,GRID*.3,0);
+}
+
+function onResize(){
+camera.aspect=window.innerWidth/window.innerHeight;
+camera.updateProjectionMatrix();
+renderer.setSize(window.innerWidth,window.innerHeight);
+updateCameraPos();
+}
+
+function onKeyDown(e){
+if(!gameRunning||!activeBlock)return;
+const key=e.key.toLowerCase();
+let moved=false;
+
+if(key==='arrowleft'||key==='a'){
+if(canPlace(activeBlock.shape,activeBlock.gx-1,activeBlock.gy,activeBlock.gz)){
+activeBlock.gx--;moved=true;
+}
+}else if(key==='arrowright'||key==='d'){
+if(canPlace(activeBlock.shape,activeBlock.gx+1,activeBlock.gy,activeBlock.gz)){
+activeBlock.gx++;moved=true;
+}
+}else if(key==='arrowup'||key==='w'){
+if(canPlace(activeBlock.shape,activeBlock.gx,activeBlock.gy,activeBlock.gz-1)){
+activeBlock.gz--;moved=true;
+}
+}else if(key==='arrowdown'||key==='s'){
+if(canPlace(activeBlock.shape,activeBlock.gx,activeBlock.gy,activeBlock.gz+1)){
+activeBlock.gz++;moved=true;
+}
+}else if(key==='r'){
+rotateBlock();
+}else if(key===' '){
+e.preventDefault();
+hardDrop();
+}
+
+if(moved){
+updateActiveBlockPos();
+updateGhost();
+}
+}
+
+function rotateBlock(){
+if(!activeBlock)return;
+const rotated=activeBlock.shape.map(([x,z])=>[-z,x]);
+const minx=Math.min(...rotated.map(s=>s[0]));
+const minz=Math.min(...rotated.map(s=>s[1]));
+const normalized=rotated.map(([x,z])=>[x-minx,z-minz]);
+
+if(canPlace(normalized,activeBlock.gx,activeBlock.gy,activeBlock.gz)){
+activeBlock.shape=normalized;
+updateActiveBlockPos();
+updateGhost();
+playSound('rotate');
+}
+}
+
+function hardDrop(){
+if(!activeBlock)return;
+while(canPlace(activeBlock.shape,activeBlock.gx,activeBlock.gy-1,activeBlock.gz)){
+activeBlock.gy--;
+score+=2;
+}
+updateActiveBlockPos();
+placeBlock();
+updateHUD();
+}
+
+function updateActiveBlockPos(){
+if(!activeBlock)return;
+const pos=gridToWorld(activeBlock.gx,activeBlock.gz);
+activeBlock.mesh.position.x=pos.wx;
+activeBlock.mesh.position.z=pos.wz;
+activeBlock.mesh.position.y=activeBlock.gy*CELL+CELL/2;
+}
+
+function onMouseMove(e){
+if(!gameRunning||!activeBlock)return;
+const rect=renderer.domElement.getBoundingClientRect();
+const nx=(e.clientX-rect.left)/rect.width*2-1;
+const nz=(e.clientY-rect.top)/rect.height*2-1;
+
+const half=GRID*CELL/2;
+const wx=nx*half*1.2;
+const wz=nz*half*1.2;
+
+const{gx,gz}=worldToGrid(wx,wz);
+const clampedGx=Math.max(0,Math.min(GRID-1,gx));
+const clampedGz=Math.max(0,Math.min(GRID-1,gz));
+
+if(canPlace(activeBlock.shape,clampedGx,activeBlock.gy,clampedGz)){
+activeBlock.gx=clampedGx;
+activeBlock.gz=clampedGz;
+updateActiveBlockPos();
+updateGhost();
+}
+}
+
+function onCanvasClick(e){
+if(!gameRunning||!activeBlock)return;
+rotateBlock();
+}
+
+function onTouchStart(e){
+e.preventDefault();
+if(!gameRunning)return;
+const t=e.touches[0];
+touchStartX=t.clientX;
+touchStartY=t.clientY;
+touchStartTime=Date.now();
+}
+
+function onTouchMove(e){
+e.preventDefault();
+if(!gameRunning||!activeBlock)return;
+const t=e.touches[0];
+const dx=t.clientX-touchStartX;
+const dz=t.clientY-touchStartY;
+const threshold=30;
+
+if(Math.abs(dx)>threshold||Math.abs(dz)>threshold){
+let mgx=activeBlock.gx,mgz=activeBlock.gz;
+if(Math.abs(dx)>Math.abs(dz)){
+mgx+=dx>0?1:-1;
+}else{
+mgz+=dz>0?1:-1;
+}
+mgx=Math.max(0,Math.min(GRID-1,mgx));
+mgz=Math.max(0,Math.min(GRID-1,mgz));
+
+if(canPlace(activeBlock.shape,mgx,activeBlock.gy,mgz)){
+activeBlock.gx=mgx;
+activeBlock.gz=mgz;
+updateActiveBlockPos();
+updateGhost();
+}
+touchStartX=t.clientX;
+touchStartY=t.clientY;
+}
+}
+
+function onTouchEnd(e){
+e.preventDefault();
+if(!gameRunning||!activeBlock)return;
+const dt=Date.now()-touchStartTime;
+if(dt<200){
+const t=e.changedTouches[0];
+const dx=Math.abs(t.clientX-touchStartX);
+const dy=Math.abs(t.clientY-touchStartY);
+if(dx<15&&dy<15){
+rotateBlock();
+}
+}
+}
+
+function animate(){
+requestAnimationFrame(animate);
+const dt=Math.min(clock.getDelta(),.05);
+
+if(gameRunning&&activeBlock){
+dropTimer+=dt;
+if(dropTimer>=dropInterval){
+dropTimer=0;
+if(canPlace(activeBlock.shape,activeBlock.gx,activeBlock.gy-1,activeBlock.gz)){
+activeBlock.gy--;
+updateActiveBlockPos();
+updateGhost();
+}else{
+placeBlock();
+}
+}
+
+if(activeBlock&&activeBlock.mesh){
+activeBlock.mesh.children.forEach(c=>{
+if(c.material&&c.material.emissiveIntensity!==undefined){
+c.material.emissiveIntensity=.3+Math.sin(Date.now()*.005)*.1;
+}
+});
+}
+}
+
+updateParticles(dt);
+
+if(shakeAmount>0){
+camera.position.x+=(Math.random()-.5)*shakeAmount;
+camera.position.z+=(Math.random()-.5)*shakeAmount;
+shakeAmount*=.9;
+if(shakeAmount<.005)shakeAmount=0;
+}
+
+renderer.render(scene,camera);
+}
+
+init();
+</script>
+</body>
+</html>
