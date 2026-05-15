@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>深渊迷踪 | Abyss Explorer</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;overflow:hidden;font-family:'Courier New',monospace;user-select:none;-webkit-user-select:none;touch-action:none}
+canvas{display:block}
+#ui{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10}
+#menu,#gameover,#floorcomplete{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:auto}
+#menu h1{font-size:clamp(28px,6vw,56px);color:#ff6600;text-shadow:0 0 30px #ff4400,0 0 60px #ff2200;margin-bottom:8px;letter-spacing:4px}
+#menu .sub{color:#cc8844;font-size:clamp(12px,2vw,16px);margin-bottom:30px;letter-spacing:2px}
+#menu button{display:block;margin:10px auto;padding:14px 48px;font-size:clamp(14px,2.5vw,18px);background:rgba(255,100,0,0.15);border:2px solid #ff6600;color:#ff9944;cursor:pointer;font-family:inherit;letter-spacing:2px;transition:all 0.3s;min-width:200px}
+#menu button:hover{background:rgba(255,100,0,0.35);box-shadow:0 0 25px rgba(255,100,0,0.5);color:#ffcc88}
+#hud{position:absolute;bottom:20px;left:20px;color:#ff9944;font-size:14px;letter-spacing:2px;line-height:1.8}
+#hud .hearts{font-size:22px;letter-spacing:4px}
+#hud .score{color:#ffcc66}
+#hud .floor{color:#ff8844}
+#minimap{position:absolute;top:20px;right:20px;width:140px;height:140px;border:2px solid rgba(255,100,0,0.4);background:rgba(0,0,0,0.6);border-radius:4px}
+#msg{position:absolute;top:50%;left:50%;transform:translate(-50%,-120px);color:#ffcc88;font-size:18px;letter-spacing:3px;text-shadow:0 0 10px #ff6600;opacity:0;transition:opacity 0.3s}
+#crosshair{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:20px;height:20px}
+#crosshair::before,#crosshair::after{content:'';position:absolute;background:rgba(255,150,50,0.6)}
+#crosshair::before{width:2px;height:16px;left:9px;top:2px}
+#crosshair::after{width:16px;height:2px;left:2px;top:9px}
+#instructions{position:absolute;bottom:20px;right:20px;color:rgba(255,150,80,0.4);font-size:11px;letter-spacing:1px;text-align:right;line-height:1.6}
+#gameover,#floorcomplete{display:none}
+#gameover h2{font-size:clamp(24px,5vw,42px);color:#cc2222;text-shadow:0 0 20px #ff0000;margin-bottom:15px}
+#floorcomplete h2{font-size:clamp(24px,5vw,42px);color:#ffaa00;text-shadow:0 0 20px #ff8800;margin-bottom:15px}
+#gameover button,#floorcomplete button{margin:8px auto;padding:12px 36px;font-size:clamp(12px,2vw,16px);background:rgba(255,100,0,0.15);border:2px solid #ff6600;color:#ff9944;cursor:pointer;font-family:inherit;letter-spacing:1px;transition:all 0.3s}
+#gameover button:hover,#floorcomplete button:hover{background:rgba(255,100,0,0.35)}
+.mobile-controls{display:none;position:fixed;bottom:40px;left:50%;transform:translateX(-50%);z-index:20;pointer-events:auto}
+.mobile-controls button{width:60px;height:60px;margin:0 8px;background:rgba(255,120,40,0.2);border:2px solid rgba(255,120,40,0.5);border-radius:50%;color:#ff9944;font-size:24px;cursor:pointer;touch-action:manipulation}
+.mobile-controls button:active{background:rgba(255,120,40,0.5)}
+@media(pointer:coarse){.mobile-controls{display:flex}#instructions{display:none}}
+.fade-in{animation:fadeIn 0.6s ease-out}
+@keyframes fadeIn{from{opacity:0;transform:translate(-50%,-50%) scale(0.9)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+</style>
+</head>
+<body>
+
+<div id="ui">
+  <div id="menu">
+    <h1>深渊迷踪</h1>
+    <div class="sub">ABYSS EXPLORER</div>
+    <button id="btn-start" onclick="game.start()">深 入 探 索</button>
+    <button id="btn-how" onclick="game.showHow()">操 作 指 南</button>
+  </div>
+  <div id="gameover">
+    <h2>魂 归 深 渊</h2>
+    <div style="color:#ff8866;margin-bottom:20px;letter-spacing:2px">最终得分: <span id="final-score" style="color:#ffcc66">0</span></div>
+    <button onclick="game.restart()">再 次 探 索</button>
+  </div>
+  <div id="floorcomplete">
+    <h2>深 层 抵 达</h2>
+    <div style="color:#ffcc88;margin-bottom:20px;letter-spacing:2px">当前层: <span id="floor-num" style="color:#ffaa44">1</span></div>
+    <button onclick="game.nextFloor()">继 续 下 潜</button>
+  </div>
+  <div id="hud" style="display:none">
+    <div class="hearts" id="hearts">❤️❤️❤️</div>
+    <div class="score">💎 宝藏: <span id="score-val">0</span></div>
+    <div class="floor">🏚️ 层级: <span id="floor-val">1</span></div>
+  </div>
+  <canvas id="minimap" width="140" height="140" style="display:none"></canvas>
+  <div id="crosshair" style="display:none"></div>
+  <div id="msg"></div>
+  <div id="instructions">WASD 移动 · 鼠标 环顾<br>左键 攻击 · E 交互<br>寻找钥匙 🔑 → 出口 🚪</div>
+</div>
+
+<div class="mobile-controls" id="mobile-ctrl">
+  <button id="m-left">◀</button>
+  <button id="m-fwd">▲</button>
+  <button id="m-right">▶</button>
+  <button id="m-atk">⚔</button>
+</div>
+
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.170.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.170.0/examples/jsm/"}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+// ============ AUDIO ENGINE ============
+class AudioEngine {
+  constructor() {
+    this.ctx = null;
+    this.initialized = false;
+  }
+  init() {
+    if (this.initialized) return;
+    try {
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.initialized = true;
+    } catch(e) { console.warn('Audio init failed:', e); }
+  }
+  play(type) {
+    if (!this.ctx) return;
+    try {
+      const now = this.ctx.currentTime;
+      const g = this.ctx.createGain();
+      g.connect(this.ctx.destination);
+      g.gain.setValueAtTime(0.3, now);
+
+      switch(type) {
+        case 'step': {
+          const o = this.ctx.createOscillator();
+          o.type = 'triangle';
+          o.frequency.setValueAtTime(80 + Math.random()*40, now);
+          o.frequency.exponentialRampToValueAtTime(40, now+0.08);
+          o.connect(g);
+          g.gain.setValueAtTime(0.06, now);
+          g.gain.exponentialRampToValueAtTime(0.001, now+0.1);
+          o.start(now); o.stop(now+0.1);
+          break;
+        }
+        case 'collect': {
+          const o = this.ctx.createOscillator();
+          o.type = 'sine';
+          o.frequency.setValueAtTime(523, now);
+          o.frequency.setValueAtTime(659, now+0.08);
+          o.frequency.setValueAtTime(784, now+0.16);
+          o.connect(g);
+          g.gain.setValueAtTime(0.15, now);
+          g.gain.exponentialRampToValueAtTime(0.001, now+0.3);
+          o.start(now); o.stop(now+0.3);
+          break;
+        }
+        case 'key': {
+          const o = this.ctx.createOscillator();
+          o.type = 'triangle';
+          o.frequency.setValueAtTime(880, now);
+          o.frequency.setValueAtTime(1100, now+0.1);
+          o.frequency.setValueAtTime(1320, now+0.2);
+          o.connect(g);
+          g.gain.setValueAtTime(0.2, now);
+          g.gain.exponentialRampToValueAtTime(0.001, now+0.35);
+          o.start(now); o.stop(now+0.35);
+          break;
+        }
+        case 'hit': {
+          const buf = this.ctx.createBuffer(1, this.ctx.sampleRate*0.15, this.ctx.sampleRate);
+          const d = buf.getChannelData(0);
+          for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.exp(-i/(this.ctx.sampleRate*0.03));
+          const s = this.ctx.createBufferSource();
+          s.buffer = buf;
+          s.connect(g);
+          g.gain.setValueAtTime(0.2, now);
+          g.gain.exponentialRampToValueAtTime(0.001, now+0.15);
+          s.start(now);
+          break;
+        }
+        case 'hurt': {
+          const o = this.ctx.createOscillator();
+          o.type = 'sawtooth';
+          o.frequency.setValueAtTime(200, now);
+          o.frequency.exponentialRampToValueAtTime(50, now+0.4);
+          o.connect(g);
+          g.gain.setValueAtTime(0.25, now);
+          g.gain.exponentialRampToValueAtTime(0.001, now+0.4);
+          o.start(now); o.stop(now+0.4);
+          break;
+        }
+        case 'exit': {
+          [523,659,784,1047].forEach((f,i)=>{
+            const o = this.ctx.createOscillator();
+            o.type = 'sine';
+            o.frequency.value = f;
+            o.connect(g);
+            const gi = this.ctx.createGain();
+            gi.connect(this.ctx.destination);
+            gi.gain.setValueAtTime(0, now+i*0.12);
+            gi.gain.linearRampToValueAtTime(0.15, now+i*0.12+0.05);
+            gi.gain.exponentialRampToValueAtTime(0.001, now+i*0.12+0.4);
+            o.connect(gi);
+            o.start(now+i*0.12); o.stop(now+i*0.12+0.4);
+          });
+          break;
+        }
+        case 'ambient': {
+          const buf = this.ctx.createBuffer(1, this.ctx.sampleRate*2, this.ctx.sampleRate);
+          const d = buf.getChannelData(0);
+          for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*0.03;
+          const s = this.ctx.createBufferSource();
+          s.buffer = buf;
+          s.loop = true;
+          const f = this.ctx.createBiquadFilter();
+          f.type = 'lowpass';
+          f.frequency.value = 200;
+          s.connect(f);
+          f.connect(g);
+          g.gain.setValueAtTime(0.08, now);
+          s.start(now);
+          this._ambientSource = s;
+          this._ambientGain = g;
+          break;
+        }
+      }
+    } catch(e) { /* silence */ }
+  }
+  stopAmbient() {
+    try { if(this._ambientSource) { this._ambientSource.stop(); this._ambientSource = null; } } catch(e) {}
+  }
+}
+
+const audio = new AudioEngine();
+
+// ============ DUNGEON GENERATOR ============
+class DungeonGenerator {
+  constructor(floor) {
+    this.size = 20 + floor * 2; // grows with floor
+    this.grid = [];
+    this.rooms = [];
+    this.cellSize = 4;
+    this.floor = floor;
+    this.startPos = null;
+    this.exitPos = null;
+    this.keyPos = null;
+  }
+
+  generate() {
+    const S = Math.min(this.size, 30);
+    // Fill walls
+    this.grid = Array.from({length:S}, ()=>Array(S).fill(1));
+    this.rooms = [];
+
+    const roomCount = 5 + Math.floor(Math.random() * 4);
+    const attempts = 100;
+
+    for(let i=0;i<roomCount;i++) {
+      let placed = false;
+      for(let a=0;a<attempts && !placed;a++) {
+        const rw = 3 + Math.floor(Math.random()*4);
+        const rh = 3 + Math.floor(Math.random()*4);
+        const rx = 1 + Math.floor(Math.random()*(S-rw-2));
+        const ry = 1 + Math.floor(Math.random()*(S-rh-2));
+
+        let overlap = false;
+        for(let x=rx-1;x<rx+rw+1&&!overlap;x++)
+          for(let y=ry-1;y<ry+rh+1&&!overlap;y++)
+            if(x>=0&&x<S&&y>=0&&y<S&&this.grid[y][x]===0) overlap=true;
+
+        if(!overlap) {
+          for(let x=rx;x<rx+rw;x++)
+            for(let y=ry;y<ry+rh;y++)
+              this.grid[y][x] = 0;
+          this.rooms.push({x:rx, y:ry, w:rw, h:rh, cx:Math.floor(rx+rw/2), cy:Math.floor(ry+rh/2)});
+          placed = true;
+        }
+      }
+      if(!placed) break;
+    }
+
+    // Connect rooms
+    for(let i=1;i<this.rooms.length;i++) {
+      const a = this.rooms[i-1];
+      const b = this.rooms[i];
+      this.carveCorridor(a.cx, a.cy, b.cx, b.cy);
+    }
+
+    // Extra connection to ensure all connected
+    if(this.rooms.length > 2) {
+      const last = this.rooms[this.rooms.length-1];
+      const first = this.rooms[0];
+      if(Math.abs(last.cx-first.cx)+Math.abs(last.cy-first.cy) > 15) {
+        const mid = this.rooms[Math.floor(this.rooms.length/2)];
+        this.carveCorridor(last.cx, last.cy, mid.cx, mid.cy);
+      }
+    }
+
+    // Set positions
+    if(this.rooms.length >= 2) {
+      const startRoom = this.rooms[0];
+      const exitRoom = this.rooms[this.rooms.length-1];
+      this.startPos = { x: startRoom.cx * this.cellSize + this.cellSize/2, z: startRoom.cy * this.cellSize + this.cellSize/2 };
+      this.exitPos = { x: exitRoom.cx * this.cellSize + this.cellSize/2, z: exitRoom.cy * this.cellSize + this.cellSize/2 };
+
+      // Key in a middle room
+      const keyRoom = this.rooms[Math.floor(this.rooms.length/2)];
+      this.keyPos = { x: keyRoom.cx * this.cellSize + this.cellSize/2 + 2, z: keyRoom.cy * this.cellSize + this.cellSize/2 };
+    }
+
+    return this;
+  }
+
+  carveCorridor(x1, y1, x2, y2) {
+    const S = this.grid.length;
+    // L-shaped: horizontal then vertical
+    let cx = x1, cy = y1;
+    while(cx !== x2) {
+      if(cx>=0&&cx<S&&cy>=0&&cy<S) this.grid[cy][cx] = 0;
+      cx += cx < x2 ? 1 : -1;
+    }
+    while(cy !== y2) {
+      if(cx>=0&&cx<S&&cy>=0&&cy<S) this.grid[cy][cx] = 0;
+      cy += cy < y2 ? 1 : -1;
+    }
+    if(x2>=0&&x2<S&&y2>=0&&y2<S) this.grid[y2][x2] = 0;
+  }
+
+  getEnemySpawns() {
+    const spawns = [];
+    const S = this.grid.length;
+    for(let y=0;y<S;y++) {
+      for(let x=0;x<S;x++) {
+        if(this.grid[y][x] === 0) {
+          const wx = x * this.cellSize + this.cellSize/2;
+          const wz = y * this.cellSize + this.cellSize/2;
+          const dx1 = this.startPos ? Math.hypot(wx-this.startPos.x, wz-this.startPos.z) : 99;
+          const dx2 = this.exitPos ? Math.hypot(wx-this.exitPos.x, wz-this.exitPos.z) : 99;
+          if(dx1 > 12 && dx2 > 10 && Math.random() < 0.08) {
+            spawns.push({x: wx, z: wz});
+          }
+        }
+      }
+    }
+    return spawns;
+  }
+
+  getTreasureSpawns() {
+    const spawns = [];
+    const S = this.grid.length;
+    for(let y=0;y<S;y++) {
+      for(let x=0;x<S;x++) {
+        if(this.grid[y][x] === 0) {
+          const wx = x * this.cellSize + this.cellSize/2 + (Math.random()-0.5)*2;
+          const wz = y * this.cellSize + this.cellSize/2 + (Math.random()-0.5)*2;
+          const dx = this.startPos ? Math.hypot(wx-this.startPos.x, wz-this.startPos.z) : 99;
+          if(dx > 8 && Math.random() < 0.06) {
+            spawns.push({x: wx, z: wz});
+          }
+        }
+      }
+    }
+    return spawns;
+  }
+
+  getTorchPositions() {
+    const torches = [];
+    const S = this.grid.length;
+    const cs = this.cellSize;
+    for(let y=1;y<S-1;y++) {
+      for(let x=1;x<S-1;x++) {
+        if(this.grid[y][x] === 1) {
+          // Wall adjacent to open space
+          const adj = [
+            [x-1,y],[x+1,y],[x,y-1],[x,y+1]
+          ].filter(([ax,ay])=>ax>=0&&ax<S&&ay>=0&&ay<S&&this.grid[ay][ax]===0);
+          if(adj.length > 0 && Math.random() < 0.25) {
+            const wx = x * cs + cs/2;
+            const wz = y * cs + cs/2;
+            // Determine wall direction
+            let nx=0, nz=0;
+            if(this.grid[y][x-1]===0) nx=-1;
+            else if(this.grid[y][x+1]===0) nx=1;
+            else if(this.grid[y-1]&&this.grid[y-1][x]===0) nz=-1;
+            else if(this.grid[y+1]&&this.grid[y+1][x]===0) nz=1;
+            torches.push({x: wx + nx*cs/2, y: 2.5, z: wz + nz*cs/2});
+          }
+        }
+      }
+    }
+    return torches;
+  }
+}
+
+// ============ GAME ============
+const game = {
+  scene: null, camera: null, renderer: null, controls: null,
+  clock: null, dungeon: null, state: 'menu',
+  playerHealth: 3, score: 0, floor: 1, hasKey: false,
+  enemies: [], treasures: [], torches: [], walls: [],
+  keyMesh: null, exitMesh: null, projectiles: [],
+  moveForward: false, moveBackward: false, moveLeft: false, moveRight: false,
+  attackCooldown: 0, hurtCooldown: 0, stepTimer: 0,
+  minimapCtx: null,
+
+  init() {
+    // Scene
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x0a0a12);
+    this.scene.fog = new THREE.FogExp2(0x0a0a12, 0.015);
+
+    // Camera
+    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.3, 80);
+    this.camera.position.set(0, 2, 0);
+
+    // Renderer
+    this.renderer = new THREE.WebGLRenderer({antialias: true});
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 0.8;
+    document.body.appendChild(this.renderer.domElement);
+
+    // Controls
+    this.controls = new PointerLockControls(this.camera, document.body);
+    this.controls.addEventListener('lock', ()=>this.onLock());
+    this.controls.addEventListener('unlock', ()=>this.onUnlock());
+    document.addEventListener('click', ()=>{
+      if(this.state==='playing' && !this.controls.isLocked) this.controls.lock();
+    });
+
+    // Clock
+    this.clock = new THREE.Clock();
+
+    // Input
+    this.setupInput();
+
+    // Lighting
+    const ambient = new THREE.AmbientLight(0x111133, 0.4);
+    this.scene.add(ambient);
+
+    // Player lantern
+    this.playerLight = new THREE.PointLight(0xff9944, 3, 12, 1);
+    this.playerLight.castShadow = true;
+    this.playerLight.shadow.mapSize.set(256, 256);
+    this.camera.add(this.playerLight);
+    this.scene.add(this.camera);
+
+    // Minimap
+    this.minimapCtx = document.getElementById('minimap').getContext('2d');
+
+    // Resize
+    window.addEventListener('resize', ()=>this.onResize());
+
+    // Game loop
+    this.animate();
+  },
+
+  setupInput() {
+    const onKey = (e, down) => {
+      if(this.state!=='playing') return;
+      switch(e.code) {
+        case 'KeyW': case 'ArrowUp': this.moveForward = down; break;
+        case 'KeyS': case 'ArrowDown': this.moveBackward = down; break;
+        case 'KeyA': case 'ArrowLeft': this.moveLeft = down; break;
+        case 'KeyD': case 'ArrowRight': this.moveRight = down; break;
+      }
+      if(down && e.code === 'KeyE') this.interact();
+    };
+    document.addEventListener('keydown', e=>onKey(e,true));
+    document.addEventListener('keyup', e=>onKey(e,false));
+    document.addEventListener('mousedown', (e)=>{
+      if(e.button===0 && this.state==='playing' && this.controls.isLocked) this.attack();
+    });
+
+    // Mobile
+    const bindMobile = (id, action) => {
+      const el = document.getElementById(id);
+      if(!el) return;
+      el.addEventListener('pointerdown', (e)=>{e.preventDefault(); action(true);});
+      el.addEventListener('pointerup', (e)=>{e.preventDefault(); action(false);});
+      el.addEventListener('pointerleave', (e)=>{action(false);});
+    };
+    bindMobile('m-fwd', v=>this.moveForward=v);
+    bindMobile('m-left', v=>this.moveLeft=v);
+    bindMobile('m-right', v=>this.moveRight=v);
+    document.getElementById('m-atk')?.addEventListener('pointerdown', (e)=>{e.preventDefault(); this.attack();});
+  },
+
+  start() {
+    audio.init();
+    this.state = 'playing';
+    this.playerHealth = 3;
+    this.score = 0;
+    this.floor = 1;
+    this.hasKey = false;
+    this.attackCooldown = 0;
+    this.hurtCooldown = 0;
+    this.enemies = [];
+    this.treasures = [];
+    this.torches = [];
+    this.walls = [];
+    this.projectiles = [];
+
+    document.getElementById('menu').style.display = 'none';
+    document.getElementById('gameover').style.display = 'none';
+    document.getElementById('floorcomplete').style.display = 'none';
+    document.getElementById('hud').style.display = 'block';
+    document.getElementById('minimap').style.display = 'block';
+    document.getElementById('crosshair').style.display = 'block';
+    document.getElementById('instructions').style.display =
+      window.matchMedia('(pointer:coarse)').matches ? 'none' : 'block';
+
+    this.generateFloor();
+    this.updateHUD();
+    this.controls.lock();
+  },
+
+  generateFloor() {
+    // Clear old
+    this.enemies.forEach(e=>this.scene.remove(e.mesh));
+    this.treasures.forEach(t=>this.scene.remove(t.mesh));
+    this.torches.forEach(t=>{this.scene.remove(t.light);this.scene.remove(t.mesh);});
+    this.walls.forEach(w=>this.scene.remove(w));
+    if(this.keyMesh) { this.scene.remove(this.keyMesh); this.keyMesh = null; }
+    if(this.exitMesh) { this.scene.remove(this.exitMesh); this.exitMesh = null; }
+
+    this.enemies = [];
+    this.treasures = [];
+    this.torches = [];
+    this.walls = [];
+    this.hasKey = false;
+
+    // Generate dungeon
+    this.dungeon = new DungeonGenerator(this.floor);
+    this.dungeon.generate();
+
+    const dg = this.dungeon;
+    const S = dg.grid.length;
+    const cs = dg.cellSize;
+
+    // Build walls
+    const wallGeo = new THREE.BoxGeometry(cs, cs, 0.4);
+    const wallMat = new THREE.MeshStandardMaterial({color:0x3a3a4a, roughness:0.7, metalness:0.1});
+
+    for(let y=0;y<S;y++) {
+      for(let x=0;x<S;x++) {
+        if(dg.grid[y][x] === 1) {
+          // Only place wall if adjacent to open space
+          const hasOpen = [[x-1,y],[x+1,y],[x,y-1],[x,y+1]].some(([ax,ay])=>
+            ax>=0&&ax<S&&ay>=0&&ay<S&&dg.grid[ay][ax]===0
+          );
+          if(hasOpen) {
+            const wall = new THREE.Mesh(wallGeo, wallMat);
+            wall.position.set(x*cs+cs/2, cs/2, y*cs+cs/2);
+            wall.castShadow = true;
+            wall.receiveShadow = true;
+            this.scene.add(wall);
+            this.walls.push(wall);
+          }
+        }
+      }
+    }
+
+    // Floor
+    const worldSize = S * cs;
+    const floorGeo = new THREE.PlaneGeometry(worldSize, worldSize);
+    const floorMat = new THREE.MeshStandardMaterial({color:0x1a1a2e, roughness:0.9, metalness:0.05});
+    const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+    floorMesh.rotation.x = -Math.PI/2;
+    floorMesh.position.set(worldSize/2, 0, worldSize/2);
+    floorMesh.receiveShadow = true;
+    this.scene.add(floorMesh);
+    this.walls.push(floorMesh);
+
+    // Ceiling
+    const ceilGeo = new THREE.PlaneGeometry(worldSize, worldSize);
+    const ceilMat = new THREE.MeshStandardMaterial({color:0x0a0a14, roughness:0.8, side:THREE.BackSide});
+    const ceilMesh = new THREE.Mesh(ceilGeo, ceilMat);
+    ceilMesh.rotation.x = -Math.PI/2;
+    ceilMesh.position.set(worldSize/2, cs, worldSize/2);
+    this.scene.add(ceilMesh);
+    this.walls.push(ceilMesh);
+
+    // Torches
+    const torches = dg.getTorchPositions();
+    const torchGeo = new THREE.CylinderGeometry(0.12, 0.15, 0.6, 8);
+    const torchMat = new THREE.MeshStandardMaterial({color:0x664422, roughness:0.6});
+    torches.forEach(tp=>{
+      const mesh = new THREE.Mesh(torchGeo, torchMat);
+      mesh.position.set(tp.x, tp.y, tp.z);
+      mesh.castShadow = true;
+      this.scene.add(mesh);
+
+      const light = new THREE.PointLight(0xff8844, 2.5, 14, 1.5);
+      light.position.copy(mesh.position);
+      light.position.y += 0.3;
+      light.castShadow = true;
+      light.shadow.mapSize.set(128, 128);
+      this.scene.add(light);
+
+      this.torches.push({mesh, light, baseIntensity:2.5, phase:Math.random()*Math.PI*2});
+    });
+
+    // Key
+    const keyGeo = new THREE.OctahedronGeometry(0.3);
+    const keyMat = new THREE.MeshStandardMaterial({color:0xffdd00, emissive:0xff8800, emissiveIntensity:0.8, roughness:0.2, metalness:0.8});
+    this.keyMesh = new THREE.Mesh(keyGeo, keyMat);
+    this.keyMesh.position.set(dg.keyPos.x, 1.2, dg.keyPos.z);
+    this.scene.add(this.keyMesh);
+
+    // Exit
+    const exitGeo = new THREE.BoxGeometry(1.5, 3, 0.3);
+    const exitMat = new THREE.MeshStandardMaterial({color:0x44aaff, emissive:0x114466, emissiveIntensity:0.5, roughness:0.3, metalness:0.5});
+    this.exitMesh = new THREE.Mesh(exitGeo, exitMat);
+    this.exitMesh.position.set(dg.exitPos.x, 1.5, dg.exitPos.z);
+    this.scene.add(this.exitMesh);
+
+    // Exit glow
+    const exitGlow = new THREE.PointLight(0x4488ff, 1, 6);
+    exitGlow.position.copy(this.exitMesh.position);
+    this.scene.add(exitGlow);
+    this.exitLight = exitGlow;
+
+    // Treasures
+    const treasGeo = new THREE.IcosahedronGeometry(0.25);
+    const treasMat = new THREE.MeshStandardMaterial({color:0xffcc00, emissive:0xff8800, emissiveIntensity:0.6, roughness:0.1, metalness:0.9});
+    dg.getTreasureSpawns().forEach(tp=>{
+      const mesh = new THREE.Mesh(treasGeo, treasMat);
+      mesh.position.set(tp.x, 0.8, tp.z);
+      mesh.userData.collected = false;
+      this.scene.add(mesh);
+      this.treasures.push(mesh);
+    });
+
+    // Enemies
+    dg.getEnemySpawns().forEach(ep=>{
+      const group = new THREE.Group();
+
+      const bodyGeo = new THREE.SphereGeometry(0.4, 8, 4);
+      const bodyMat = new THREE.MeshStandardMaterial({color:0x220022, roughness:0.3, emissive:0x110011, emissiveIntensity:0.3});
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      body.position.y = 0.5;
+      group.add(body);
+
+      const eyeGeo = new THREE.SphereGeometry(0.08, 8, 8);
+      const eyeMat = new THREE.MeshStandardMaterial({color:0xff2200, emissive:0xff0000, emissiveIntensity:1, roughness:0.2});
+      const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+      eyeL.position.set(-0.12, 0.55, -0.3);
+      group.add(eyeL);
+      const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+      eyeR.position.set(0.12, 0.55, -0.3);
+      group.add(eyeR);
+
+      group.position.set(ep.x, 0, ep.z);
+      this.scene.add(group);
+
+      this.enemies.push({
+        mesh: group, speed: 1.5 + Math.random()*1.5, hp: 2 + Math.floor(this.floor/2),
+        patrolAngle: Math.random()*Math.PI*2, patrolTimer: 0, state: 'patrol',
+        chaseTimer: 0, stuckTimer: 0, lastPos: group.position.clone()
+      });
+    });
+
+    // Player start
+    if(dg.startPos) {
+      this.camera.position.set(dg.startPos.x, 1.7, dg.startPos.z);
+    }
+
+    // Ambient audio
+    audio.play('ambient');
+  },
+
+  animate() {
+    requestAnimationFrame(()=>this.animate());
+
+    try {
+      const dt = Math.min(this.clock.getDelta(), 0.1);
+
+      if(this.state === 'playing') {
+        this.updatePlayer(dt);
+        this.updateEnemies(dt);
+        this.updateTorches(dt);
+        this.updateTreasures(dt);
+        this.updateProjectiles(dt);
+        this.updateMinimap();
+      }
+    } catch(e) {
+      console.error('Game loop error:', e);
+    }
+
+    this.renderer.render(this.scene, this.camera);
+  },
+
+  updatePlayer(dt) {
+    if(!this.controls.isLocked) return;
+
+    const speed = 6;
+    const dir = new THREE.Vector3();
+    if(this.moveForward) dir.z -= 1;
+    if(this.moveBackward) dir.z += 1;
+    if(this.moveLeft) dir.x -= 1;
+    if(this.moveRight) dir.x += 1;
+
+    if(dir.length() > 0) {
+      dir.normalize();
+      dir.applyQuaternion(this.camera.quaternion);
+      dir.y = 0;
+      dir.normalize();
+
+      // Collision check
+      const newPos = this.camera.position.clone().add(dir.clone().multiplyScalar(speed * dt));
+      const ray = new THREE.Raycaster(new THREE.Vector3(newPos.x, 1, newPos.z), new THREE.Vector3(0,-1,0), 0, 2);
+      // Simple boundary
+      const worldEdge = this.dungeon.grid.length * this.dungeon.cellSize - 1;
+      if(newPos.x > 1 && newPos.x < worldEdge && newPos.z > 1 && newPos.z < worldEdge) {
+        this.camera.position.copy(newPos);
+        this.camera.position.y = 1.7;
+      }
+
+      // Footsteps
+      this.stepTimer += dt;
+      if(this.stepTimer > 0.4) {
+        this.stepTimer = 0;
+        audio.play('step');
+      }
+    }
+
+    // Attack cooldown
+    if(this.attackCooldown > 0) this.attackCooldown -= dt;
+
+    // Hurt cooldown
+    if(this.hurtCooldown > 0) this.hurtCooldown -= dt;
+
+    // Check enemy proximity
+    this.checkEnemyContact();
+  },
+
+  updateEnemies(dt) {
+    const playerPos = this.camera.position.clone();
+    const dg = this.dungeon;
+
+    this.enemies.forEach(enemy=>{
+      const ePos = enemy.mesh.position;
+      const dist = playerPos.distanceTo(ePos);
+
+      // AI state machine
+      if(dist < 15 && dist > 0.5) {
+        enemy.state = 'chase';
+        enemy.chaseTimer = 3;
+      } else if(enemy.chaseTimer > 0) {
+        enemy.chaseTimer -= dt;
+      } else {
+        enemy.state = 'patrol';
+      }
+
+      let moveDir;
+      if(enemy.state === 'chase') {
+        moveDir = new THREE.Vector3().subVectors(playerPos, ePos).normalize();
+        moveDir.y = 0;
+      } else {
+        enemy.patrolTimer += dt;
+        if(enemy.patrolTimer > 3 + Math.random()*2) {
+          enemy.patrolTimer = 0;
+          enemy.patrolAngle += (Math.random()-0.5) * Math.PI;
+        }
+        moveDir = new THREE.Vector3(Math.sin(enemy.patrolAngle), 0, Math.cos(enemy.patrolAngle));
+      }
+
+      const speed = enemy.state === 'chase' ? enemy.speed : enemy.speed * 0.4;
+      const newEPos = ePos.clone().add(moveDir.multiplyScalar(speed * dt));
+
+      // Wall collision for enemies
+      const gx = Math.floor(newEPos.x / dg.cellSize);
+      const gz = Math.floor(newEPos.z / dg.cellSize);
+      const S = dg.grid.length;
+      if(gx>=0&&gx<S&&gz>=0&&gz<S&&dg.grid[gz][gx]===0) {
+        enemy.mesh.position.copy(newEPos);
+      }
+
+      // Face player when chasing
+      if(enemy.state === 'chase') {
+        enemy.mesh.lookAt(playerPos.x, enemy.mesh.position.y, playerPos.z);
+      }
+
+      // Rotate body for bobbing
+      enemy.mesh.children[0].rotation.y += dt * 2;
+    });
+  },
+
+  checkEnemyContact() {
+    if(this.hurtCooldown > 0) return;
+    const pPos = this.camera.position;
+    this.enemies.forEach(enemy=>{
+      if(pPos.distanceTo(enemy.mesh.position) < 1.0) {
+        this.takeDamage();
+      }
+    });
+  },
+
+  takeDamage() {
+    if(this.hurtCooldown > 0) return;
+    this.hurtCooldown = 1.5;
+    this.playerHealth--;
+    audio.play('hurt');
+    this.updateHUD();
+
+    // Screen flash
+    this.damageFlash();
+
+    if(this.playerHealth <= 0) this.gameOver();
+  },
+
+  damageFlash() {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,0,0,0.3);z-index:5;pointer-events:none;transition:opacity 0.4s';
+    document.body.appendChild(overlay);
+    setTimeout(()=>{overlay.style.opacity='0';setTimeout(()=>overlay.remove(),400);},50);
+  },
+
+  updateTorches(dt) {
+    this.torches.forEach(t=>{
+      t.light.intensity = t.baseIntensity + Math.sin(Date.now()*0.01 + t.phase) * 0.4 + Math.random()*0.2;
+    });
+  },
+
+  updateTreasures(dt) {
+    this.treasures.forEach(t=>{
+      if(!t.userData.collected) {
+        t.rotation.y += dt * 2;
+        t.position.y = 0.8 + Math.sin(Date.now()*0.003 + t.position.x) * 0.15;
+        // Check proximity
+        if(this.camera.position.distanceTo(t.position) < 1.2) {
+          t.userData.collected = true;
+          this.score += 100;
+          audio.play('collect');
+          this.showMessage('+100 💎');
+          this.updateHUD();
+          // Fade out
+          const fadeOut = ()=>{
+            t.material.transparent = true;
+            t.material.opacity -= 0.05;
+            if(t.material.opacity <= 0) this.scene.remove(t);
+            else requestAnimationFrame(fadeOut);
+          };
+          t.material = t.material.clone();
+          t.material.transparent = true;
+          fadeOut();
+        }
+      }
+    });
+
+    // Key
+    if(this.keyMesh && !this.hasKey) {
+      this.keyMesh.rotation.y += dt * 2;
+      this.keyMesh.position.y = 1.2 + Math.sin(Date.now()*0.004) * 0.2;
+      if(this.camera.position.distanceTo(this.keyMesh.position) < 1.5) {
+        this.hasKey = true;
+        audio.play('key');
+        this.showMessage('🔑 钥匙已获取！寻找出口！');
+        this.scene.remove(this.keyMesh);
+        this.keyMesh = null;
+      }
+    }
+
+    // Exit
+    if(this.exitMesh && this.hasKey) {
+      if(this.camera.position.distanceTo(this.exitMesh.position) < 2) {
+        this.floorComplete();
+      }
+    }
+  },
+
+  attack() {
+    if(this.attackCooldown > 0) return;
+    this.attackCooldown = 0.4;
+
+    const dir = new THREE.Vector3(0,0,-1).applyQuaternion(this.camera.quaternion);
+    const origin = this.camera.position.clone();
+    audio.play('hit');
+
+    // Check enemies in front
+    let hit = false;
+    this.enemies.forEach((enemy,i)=>{
+      if(hit) return;
+      const toEnemy = new THREE.Vector3().subVectors(enemy.mesh.position, origin);
+      const proj = toEnemy.dot(dir);
+      if(proj > 0 && proj < 3) {
+        const perp = toEnemy.clone().sub(dir.clone().multiplyScalar(proj)).length();
+        if(perp < 1.5) {
+          enemy.hp--;
+          if(enemy.hp <= 0) {
+            this.scene.remove(enemy.mesh);
+            this.enemies.splice(i,1);
+            this.score += 200;
+            this.showMessage('💀 +200');
+            this.updateHUD();
+          }
+          hit = true;
+        }
+      }
+    });
+
+    // Attack visual (brief flash)
+    this.playerLight.intensity = 8;
+    setTimeout(()=>{this.playerLight.intensity = 3;}, 80);
+  },
+
+  interact() {
+    // Already handled by proximity in updateTreasures
+  },
+
+  updateProjectiles(dt) {
+    // Reserved for future ranged enemies
+  },
+
+  updateMinimap() {
+    const canvas = document.getElementById('minimap');
+    const ctx = this.minimapCtx;
+    const w = 140, h = 140;
+    ctx.clearRect(0, 0, w, h);
+
+    const dg = this.dungeon;
+    const S = dg.grid.length;
+    const scale = w / (S * dg.cellSize);
+
+    // Rooms
+    ctx.fillStyle = 'rgba(40,30,50,0.6)';
+    dg.rooms.forEach(r=>{
+      ctx.fillRect(r.x*dg.cellSize*scale, r.y*dg.cellSize*scale, r.w*dg.cellSize*scale, r.h*dg.cellSize*scale);
+    });
+
+    // Corridors
+    ctx.fillStyle = 'rgba(30,20,40,0.4)';
+    for(let y=0;y<S;y++){
+      for(let x=0;x<S;x++){
+        if(dg.grid[y][x]===0){
+          // Check if not in a room (approximate)
+          const inRoom = dg.rooms.some(r=>x>=r.x&&x<r.x+r.w&&y>=r.y&&y<r.y+r.h);
+          if(!inRoom) ctx.fillRect(x*dg.cellSize*scale, y*dg.cellSize*scale, dg.cellSize*scale, dg.cellSize*scale);
+        }
+      }
+    }
+
+    // Player
+    ctx.fillStyle = '#ff6600';
+    ctx.beginPath();
+    ctx.arc(this.camera.position.x*scale, this.camera.position.z*scale, 3, 0, Math.PI*2);
+    ctx.fill();
+
+    // Player direction
+    const dir = new THREE.Vector3(0,0,-1).applyQuaternion(this.camera.quaternion);
+    ctx.strokeStyle = '#ff9944';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(this.camera.position.x*scale, this.camera.position.z*scale);
+    ctx.lineTo((this.camera.position.x+dir.x*5)*scale, (this.camera.position.z+dir.z*5)*scale);
+    ctx.stroke();
+
+    // Enemies
+    ctx.fillStyle = '#ff2244';
+    this.enemies.forEach(e=>{
+      ctx.beginPath();
+      ctx.arc(e.mesh.position.x*scale, e.mesh.position.z*scale, 2, 0, Math.PI*2);
+      ctx.fill();
+    });
+
+    // Key
+    if(this.keyMesh) {
+      ctx.fillStyle = '#ffdd00';
+      ctx.beginPath();
+      ctx.arc(this.keyMesh.position.x*scale, this.keyMesh.position.z*scale, 2.5, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    // Exit
+    if(this.exitMesh) {
+      ctx.fillStyle = this.hasKey ? '#44ff44' : '#446688';
+      ctx.beginPath();
+      ctx.arc(this.exitMesh.position.x*scale, this.exitMesh.position.z*scale, 3, 0, Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle = '#4488ff';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  },
+
+  showMessage(text) {
+    const el = document.getElementById('msg');
+    el.textContent = text;
+    el.style.opacity = '1';
+    clearTimeout(this._msgTimeout);
+    this._msgTimeout = setTimeout(()=>{el.style.opacity='0';}, 2000);
+  },
+
+  updateHUD() {
+    const hearts = '❤️'.repeat(Math.max(0,this.playerHealth)) + '🖤'.repeat(Math.max(0,3-this.playerHealth));
+    document.getElementById('hearts').textContent = hearts;
+    document.getElementById('score-val').textContent = this.score;
+    document.getElementById('floor-val').textContent = this.floor;
+
+    if(this.hasKey) {
+      document.getElementById('hud').querySelector('.score').textContent += ' 🔑';
+    }
+  },
+
+  floorComplete() {
+    this.state = 'floorcomplete';
+    this.controls.unlock();
+    audio.play('exit');
+    document.getElementById('floor-num').textContent = this.floor;
+    document.getElementById('floorcomplete').style.display = 'block';
+  },
+
+  nextFloor() {
+    document.getElementById('floorcomplete').style.display = 'none';
+    this.floor++;
+    this.hasKey = false;
+    // Heal 1 heart per floor
+    this.playerHealth = Math.min(3, this.playerHealth + 1);
+    this.generateFloor();
+    this.updateHUD();
+    this.state = 'playing';
+    this.controls.lock();
+  },
+
+  gameOver() {
+    this.state = 'gameover';
+    this.controls.unlock();
+    audio.stopAmbient();
+    document.getElementById('final-score').textContent = this.score;
+    document.getElementById('gameover').style.display = 'block';
+    document.getElementById('hud').style.display = 'none';
+  },
+
+  restart() {
+    // Clean scene
+    this.enemies.forEach(e=>this.scene.remove(e.mesh));
+    this.treasures.forEach(t=>this.scene.remove(t));
+    this.torches.forEach(t=>{this.scene.remove(t.light);this.scene.remove(t.mesh);});
+    this.walls.forEach(w=>this.scene.remove(w));
+    if(this.keyMesh) this.scene.remove(this.keyMesh);
+    if(this.exitMesh) this.scene.remove(this.exitMesh);
+    if(this.exitLight) this.scene.remove(this.exitLight);
+    this.enemies=[];this.treasures=[];this.torches=[];this.walls=[];
+
+    document.getElementById('gameover').style.display = 'none';
+    document.getElementById('hud').style.display = 'none';
+    document.getElementById('minimap').style.display = 'none';
+    document.getElementById('crosshair').style.display = 'none';
+    document.getElementById('menu').style.display = 'block';
+    this.state = 'menu';
+  },
+
+  showHow() {
+    alert('🎮 操作指南\n\n⌨️ WASD / 方向键 - 移动\n🖱️ 鼠标 - 环顾四周\n🖱️ 左键点击 - 攻击敌人\n⌨️ E 键 - 互动捡取\n\n🎯 目标：找到🔑钥匙 → 打开🚪出口 → 深入下一层\n💀 小心暗影生物！收集💎宝藏获取分数！');
+  },
+
+  onLock() {
+    // Locked in
+  },
+
+  onUnlock() {
+    if(this.state==='playing') {
+      // Show pause hint
+    }
+  },
+
+  onResize() {
+    this.camera.aspect = window.innerWidth / window.innerHeight;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+};
+
+// ============ STARTUP ============
+game.init();
+
+// Expose to global for HTML onclick handlers
+window.game = game;
+</script>
+</body>
+</html>
