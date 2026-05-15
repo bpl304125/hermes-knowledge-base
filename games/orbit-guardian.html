@@ -1,259 +1,514 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ORBIT GUARDIAN</title>
-    <style>
-        body { margin: 0; background-color: #000; font-family: Arial, sans-serif; }
-        canvas { display: block; }
-        #start-screen, #game-over { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: #fff; }
-        #hud { position: absolute; top: 10px; left: 10px; color: #fff; font-size: 24px; }
-        #planet-health { position: absolute; bottom: 10px; left: 10px; width: 200px; height: 20px; background-color: #f00; border: 1px solid #fff; }
-        #planet-health-bar { height: 100%; background-color: #0f0; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ORBIT GUARDIAN</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif}
+canvas{display:block}
+#start-screen,#game-over{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  text-align:center;color:#fff;z-index:10;pointer-events:none
+}
+#start-screen button,#game-over button{
+  pointer-events:auto;margin-top:20px;padding:14px 40px;font-size:20px;
+  border:2px solid #0ff;background:transparent;color:#0ff;cursor:pointer;
+  border-radius:4px;transition:all 0.3s
+}
+#start-screen button:hover,#game-over button:hover{background:#0ff;color:#000}
+#start-screen h1{font-size:48px;color:#0ff;text-shadow:0 0 30px #0ff;margin-bottom:10px}
+#game-over h1{font-size:40px;color:#f44;text-shadow:0 0 20px #f44}
+#game-over span{font-size:22px;display:block;margin:10px 0}
+#hud{position:absolute;top:12px;left:16px;color:#fff;font-size:18px;z-index:5;display:none}
+#hud div{margin:4px 0}
+#health-wrap{position:absolute;bottom:16px;left:16px;z-index:5;display:none}
+#health-wrap span{color:#fff;font-size:13px}
+#health-bar{width:200px;height:14px;border:1px solid #fff;margin-top:4px;background:#300}
+#health-fill{height:100%;width:100%;background:linear-gradient(90deg,#f44,#0f0);transition:width 0.2s}
+.ring-label{position:absolute;color:#fff;font-size:11px;text-align:center;pointer-events:none;z-index:4}
+</style>
 </head>
 <body>
-    <div id="start-screen">
-        <h1>ORBIT GUARDIAN</h1>
-        <button id="start-button">开始游戏</button>
-    </div>
-    <div id="hud" style="display: none;">
-        <span id="score">得分: 0</span>
-        <span id="combo">连击: 0</span>
-    </div>
-    <div id="planet-health" style="display: none;">
-        <div id="planet-health-bar"></div>
-    </div>
-    <div id="game-over" style="display: none;">
-        <h1>游戏结束</h1>
-        <span id="final-score"></span>
-        <button id="restart-button">重新开始</button>
-    </div>
+<div id="start-screen">
+  <h1>ORBIT GUARDIAN</h1>
+  <p style="color:#aaa;font-size:15px;margin-bottom:10px">点击轨道环发射 — 守护星球</p>
+  <button id="start-btn">开 始 游 戏</button>
+</div>
+<div id="hud">
+  <div>🔰 得分: <span id="score">0</span></div>
+  <div>⚡ 连击: <span id="combo">0</span></div>
+  <div>🌊 波次: <span id="wave">1</span></div>
+</div>
+<div id="health-wrap">
+  <span>🛡 星球生命</span>
+  <div id="health-bar"><div id="health-fill"></div></div>
+</div>
+<div id="game-over">
+  <h1>游戏结束</h1>
+  <span id="final-score"></span>
+  <span id="final-wave"></span>
+  <button id="restart-btn">重 新 开 始</button>
+</div>
 
-    <script type="importmap">
-        {"imports":{"three":"https://unpkg.com/three@0.170.0/build/three.module.js"}}
-    </script>
-    <script type="module">
-        import * as THREE from 'three';
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.170.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
 
-        let scene, camera, renderer, planet, rings, projectiles, enemies;
-        let score = 0, combo = 0, planetHealth = 100;
-        let ringCooldowns = [0, 0, 0];
-        let audioCtx, pewSound, explosionSound, alertSound;
-        let startScreen, hud, planetHealthBar, gameOverScreen;
+// ───────────────────── AUDIO (synth, no files) ─────────────────────
+let audioCtx = null;
+function initAudio() {
+  try { audioCtx = new (window.AudioContext||window.webkitAudioContext)(); } catch(e) {}
+}
+function playTone(freq, dur, type='square', vol=0.15) {
+  if (!audioCtx) return;
+  try {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type; osc.frequency.value = freq;
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(); osc.stop(audioCtx.currentTime + dur);
+  } catch(e) {}
+}
+function sfxPew()   { playTone(800, 0.1, 'square', 0.12); playTone(1200, 0.06, 'square', 0.08); }
+function sfxExplosion() { playTone(80, 0.25, 'sawtooth', 0.2); playTone(40, 0.3, 'triangle', 0.15); }
+function sfxHit()    { playTone(200, 0.3, 'sawtooth', 0.25); playTone(100, 0.4, 'triangle', 0.2); }
+function sfxRingHit(){ playTone(600, 0.12, 'triangle', 0.1); }
+function sfxGameOver(){ playTone(150, 0.5, 'sawtooth', 0.3); playTone(80, 0.7, 'triangle', 0.25); }
 
-        async function init() {
-            try {
-                audioCtx = new AudioContext();
-                const pewBuffer = await fetch('https://example.com/pew.mp3').then(response => response.arrayBuffer()).then(buffer => audioCtx.decodeAudioData(buffer));
-                pewSound = audioCtx.createBufferSource();
-                pewSound.buffer = pewBuffer;
-                pewSound.connect(audioCtx.destination);
+// ───────────────────── THREE.JS SETUP ─────────────────────
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.5, 50);
+camera.position.set(0, 3, 10);
+camera.lookAt(0, 0, 0);
 
-                const explosionBuffer = await fetch('https://example.com/explosion.mp3').then(response => response.arrayBuffer()).then(buffer => audioCtx.decodeAudioData(buffer));
-                explosionSound = audioCtx.createBufferSource();
-                explosionSound.buffer = explosionBuffer;
-                explosionSound.connect(audioCtx.destination);
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
 
-                const alertBuffer = await fetch('https://example.com/alert.mp3').then(response => response.arrayBuffer()).then(buffer => audioCtx.decodeAudioData(buffer));
-                alertSound = audioCtx.createBufferSource();
-                alertSound.buffer = alertBuffer;
-                alertSound.connect(audioCtx.destination);
-            } catch (e) {
-                console.error('Audio init failed:', e);
-            }
+// ───────────────────── LIGHTING ─────────────────────
+scene.add(new THREE.AmbientLight(0x111133, 0.5));
+const pointLight = new THREE.PointLight(0xffffff, 2, 20);
+pointLight.position.set(0, 0, 0);
+scene.add(pointLight);
 
-            scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            document.body.appendChild(renderer.domElement);
+// ───────────────────── STARFIELD ─────────────────────
+const starsGeom = new THREE.BufferGeometry();
+const starCount = 800;
+const starPos = new Float32Array(starCount * 3);
+for (let i = 0; i < starCount; i++) {
+  starPos[i*3] = (Math.random() - 0.5) * 30;
+  starPos[i*3+1] = (Math.random() - 0.5) * 20;
+  starPos[i*3+2] = -5 - Math.random() * 10;
+}
+starsGeom.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+const stars = new THREE.Points(starsGeom, new THREE.PointsMaterial({ color: 0x8888ff, size: 0.03 }));
+scene.add(stars);
 
-            planet = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, emissive: 0xffffff }));
-            scene.add(planet);
+// ───────────────────── PLANET ─────────────────────
+const planetGeom = new THREE.SphereGeometry(1.2, 48, 48);
+const planetMat = new THREE.MeshPhongMaterial({
+  color: 0x2244aa,
+  emissive: 0x112266,
+  specular: 0x4488ff,
+  shininess: 30,
+});
+const planet = new THREE.Mesh(planetGeom, planetMat);
+scene.add(planet);
 
-            rings = [];
-            for (let i = 0; i < 3; i++) {
-                const ring = new THREE.Mesh(new THREE.TorusGeometry(2 + i, 0.1, 16, 100), new THREE.MeshBasicMaterial({ color: [0x00ffff, 0xff00ff, 0xffff00][i] }));
-                scene.add(ring);
-                rings.push(ring);
-            }
+// Planet glow ring
+const glowGeom = new THREE.TorusGeometry(1.35, 0.06, 16, 64);
+const glowMat = new THREE.MeshBasicMaterial({ color: 0x4488ff, transparent: true, opacity: 0.6 });
+const glowRing = new THREE.Mesh(glowGeom, glowMat);
+glowRing.rotation.x = Math.PI / 2;
+planet.add(glowRing);
 
-            projectiles = [];
-            enemies = [];
+// ───────────────────── ORBIT RINGS (3 weapon slots) ─────────────────────
+const ringColors = [0x00ffff, 0xff44ff, 0xffdd00];
+const ringRadii = [2.4, 3.4, 4.4];
+const rings = [];
+const ringGroups = [];
 
-            startScreen = document.getElementById('start-screen');
-            hud = document.getElementById('hud');
-            planetHealthBar = document.getElementById('planet-health-bar');
-            gameOverScreen = document.getElementById('game-over');
+for (let i = 0; i < 3; i++) {
+  const group = new THREE.Group();
+  const torus = new THREE.Mesh(
+    new THREE.TorusGeometry(ringRadii[i], 0.08, 16, 100),
+    new THREE.MeshBasicMaterial({ color: ringColors[i], transparent: true, opacity: 0.7 })
+  );
+  torus.rotation.x = Math.PI / 2;
+  torus.name = 'ring' + i;
+  group.add(torus);
 
-            document.getElementById('start-button').addEventListener('click', startGame);
-            document.getElementById('restart-button').addEventListener('click', restartGame);
-            document.addEventListener('click', onClick);
-            document.addEventListener('touchstart', onClick);
+  // Small orbs on the ring to show position
+  for (let j = 0; j < 6; j++) {
+    const angle = (j / 6) * Math.PI * 2;
+    const orb = new THREE.Mesh(
+      new THREE.SphereGeometry(0.1, 8, 8),
+      new THREE.MeshBasicMaterial({ color: ringColors[i] })
+    );
+    orb.position.set(Math.cos(angle) * ringRadii[i], 0, Math.sin(angle) * ringRadii[i]);
+    orb.userData = { angle, ringIndex: i };
+    group.add(orb);
+  }
 
-            window.addEventListener('resize', onResize);
+  group.position.y = 0;
+  scene.add(group);
+  ringGroups.push(group);
+  rings.push(torus);
+}
+
+// ───────────────────── GAME STATE ─────────────────────
+let running = false;
+let score = 0;
+let combo = 0;
+let maxCombo = 0;
+let planetHealth = 100;
+let wave = 1;
+let waveTimer = 0;
+let enemiesSpawnedThisWave = 0;
+let enemiesPerWave = 8;
+let ringCooldowns = [0, 0, 0];
+let ringMaxCd = [25, 20, 15]; // 3 rings have different cooldowns
+let projectiles = [];
+let enemies = [];
+let particles = [];
+let animFrameId = null;
+
+// ───────────────────── DOM ─────────────────────
+const $start = document.getElementById('start-screen');
+const $over  = document.getElementById('game-over');
+const $hud   = document.getElementById('hud');
+const $hw    = document.getElementById('health-wrap');
+const $scoreEl = document.getElementById('score');
+const $comboEl = document.getElementById('combo');
+const $waveEl  = document.getElementById('wave');
+const $healthFill = document.getElementById('health-fill');
+const $finalScore = document.getElementById('final-score');
+const $finalWave  = document.getElementById('final-wave');
+
+// ───────────────────── HELPERS ─────────────────────
+function getRandomDir() {
+  const angle = Math.random() * Math.PI * 2;
+  const z = (Math.random() - 0.5) * 2;
+  const dir = new THREE.Vector3(Math.cos(angle), Math.sin(z) * 0.8, Math.sin(angle));
+  return dir.normalize();
+}
+
+function getProjectileDir(ringIndex) {
+  // Fire toward a random enemy, or random direction
+  if (enemies.length > 0) {
+    const target = enemies[Math.floor(Math.random() * enemies.length)].mesh.position.clone();
+    const origin = new THREE.Vector3(0, 0, 0);
+    return target.clone().sub(origin).normalize();
+  }
+  return getRandomDir();
+}
+
+// ───────────────────── SPAWN ─────────────────────
+function spawnEnemy() {
+  const type = Math.random();
+  let geom, color, speed, points;
+  if (type < 0.4) {
+    // Triangle invader
+    geom = new THREE.ConeGeometry(0.3, 0.5, 3);
+    color = 0xff3333;
+    speed = 0.06 + wave * 0.01;
+    points = 10;
+  } else if (type < 0.75) {
+    // Cube invader
+    geom = new THREE.BoxGeometry(0.4, 0.4, 0.4);
+    color = 0xff8833;
+    speed = 0.08 + wave * 0.01;
+    points = 20;
+  } else {
+    // Diamond invader (fast)
+    geom = new THREE.OctahedronGeometry(0.25);
+    color = 0xff00ff;
+    speed = 0.12 + wave * 0.015;
+    points = 30;
+  }
+  const mat = new THREE.MeshPhongMaterial({ color, emissive: color, emissiveIntensity: 0.5 });
+  const mesh = new THREE.Mesh(geom, mat);
+
+  // Spawn at distance ~12, random direction
+  const dir = getRandomDir();
+  mesh.position.copy(dir.clone().multiplyScalar(12 + Math.random() * 3));
+  mesh.userData = {
+    velocity: dir.clone().multiplyScalar(-speed),
+    points,
+    health: 1,
+  };
+  scene.add(mesh);
+  enemies.push({ mesh, dir });
+  enemiesSpawnedThisWave++;
+}
+
+// ───────────────────── FIRE PROJECTILE ─────────────────────
+function fireProjectile(ringIndex) {
+  if (ringCooldowns[ringIndex] > 0) return;
+  ringCooldowns[ringIndex] = ringMaxCd[ringIndex];
+
+  const color = ringColors[ringIndex];
+  const geom = new THREE.SphereGeometry(0.12, 8, 8);
+  const mat = new THREE.MeshBasicMaterial({ color });
+  const mesh = new THREE.Mesh(geom, mat);
+
+  // Spawn at ring radius in a random direction
+  const angle = Math.random() * Math.PI * 2;
+  const radius = ringRadii[ringIndex];
+  mesh.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+
+  const dir = getProjectileDir(ringIndex);
+  const speed = 0.35 + ringIndex * 0.05;
+  mesh.userData = { velocity: dir.clone().multiplyScalar(speed), ringIndex, age: 0 };
+
+  scene.add(mesh);
+  projectiles.push(mesh);
+  sfxPew();
+}
+
+// ───────────────────── PARTICLES ─────────────────────
+function spawnParticles(pos, color, count = 12) {
+  for (let i = 0; i < count; i++) {
+    const geom = new THREE.SphereGeometry(0.04, 4, 4);
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 });
+    const p = new THREE.Mesh(geom, mat);
+    p.position.copy(pos);
+    const vel = new THREE.Vector3(
+      (Math.random() - 0.5) * 0.2,
+      (Math.random() - 0.5) * 0.2,
+      (Math.random() - 0.5) * 0.2
+    );
+    p.userData = { velocity: vel, life: 1.0, decay: 0.02 + Math.random() * 0.04 };
+    scene.add(p);
+    particles.push(p);
+  }
+}
+
+// ───────────────────── UPDATE ─────────────────────
+function update() {
+  if (!running) return;
+
+  // Cooldowns
+  for (let i = 0; i < 3; i++) {
+    if (ringCooldowns[i] > 0) ringCooldowns[i]--;
+  }
+
+  // Move projectiles
+  for (let i = projectiles.length - 1; i >= 0; i--) {
+    const p = projectiles[i];
+    p.position.add(p.userData.velocity);
+    p.userData.age++;
+    if (p.position.length() > 15 || p.userData.age > 200) {
+      scene.remove(p); p.geometry?.dispose(); p.material?.dispose();
+      projectiles.splice(i, 1);
+    }
+  }
+
+  // Move enemies
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    e.mesh.position.add(e.mesh.userData.velocity);
+    e.mesh.rotation.x += 0.03;
+    e.mesh.rotation.y += 0.05;
+
+    // Hit planet?
+    if (e.mesh.position.length() < 1.5) {
+      planetHealth -= 10;
+      updateHealthBar();
+      sfxHit();
+      spawnParticles(e.mesh.position, 0xff4444, 15);
+      scene.remove(e.mesh);
+      e.mesh.geometry?.dispose(); e.mesh.material?.dispose();
+      enemies.splice(i, 1);
+      combo = 0;
+      if (planetHealth <= 0) { gameOver(); return; }
+    }
+  }
+
+  // Collisions
+  for (let pi = projectiles.length - 1; pi >= 0; pi--) {
+    const p = projectiles[pi];
+    for (let ei = enemies.length - 1; ei >= 0; ei--) {
+      const e = enemies[ei];
+      if (p.position.distanceTo(e.mesh.position) < 0.6) {
+        e.mesh.userData.health--;
+        if (e.mesh.userData.health <= 0) {
+          const pts = e.mesh.userData.points || 10;
+          score += pts * (1 + Math.floor(combo / 5));
+          combo++;
+          if (combo > maxCombo) maxCombo = combo;
+          spawnParticles(e.mesh.position, ringColors[pi % 3], 15);
+          sfxExplosion();
+          scene.remove(e.mesh);
+          e.mesh.geometry?.dispose(); e.mesh.material?.dispose();
+          enemies.splice(ei, 1);
+        } else {
+          sfxRingHit();
+          spawnParticles(e.mesh.position, 0xffffff, 5);
         }
+        scene.remove(p);
+        p.geometry?.dispose(); p.material?.dispose();
+        projectiles.splice(pi, 1);
+        updateHUD();
+        break;
+      }
+    }
+  }
 
-        function startGame() {
-            startScreen.style.display = 'none';
-            hud.style.display = 'block';
-            planetHealthBar.parentNode.style.display = 'block';
-            score = 0;
-            combo = 0;
-            planetHealth = 100;
-            ringCooldowns = [0, 0, 0];
-            updateHUD();
-            updatePlanetHealth();
-            animate();
-        }
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.position.add(p.userData.velocity);
+    p.userData.life -= p.userData.decay;
+    p.material.opacity = Math.max(0, p.userData.life);
+    if (p.userData.life <= 0) {
+      scene.remove(p); p.geometry?.dispose(); p.material?.dispose();
+      particles.splice(i, 1);
+    }
+  }
 
-        function restartGame() {
-            gameOverScreen.style.display = 'none';
-            startGame();
-        }
+  // Wave spawning
+  waveTimer++;
+  if (enemiesSpawnedThisWave < enemiesPerWave && waveTimer % Math.max(5, 40 - wave * 2) === 0) {
+    spawnEnemy();
+  }
 
-        function onClick(event) {
-            if (hud.style.display === 'none') return;
-            const raycaster = new THREE.Raycaster();
-            const mouse = new THREE.Vector2();
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObjects(rings);
-            if (intersects.length > 0) {
-                const ringIndex = rings.indexOf(intersects[0].object);
-                if (ringCooldowns[ringIndex] === 0) {
-                    fireProjectile(ringIndex);
-                    ringCooldowns[ringIndex] = 30; // 30 frames cooldown
-                }
-            }
-        }
+  // Wave complete?
+  if (enemiesSpawnedThisWave >= enemiesPerWave && enemies.length === 0) {
+    wave++;
+    enemiesSpawnedThisWave = 0;
+    enemiesPerWave = 8 + wave * 3;
+    waveTimer = 0;
+    updateHUD();
+    // Brief pause before next wave
+    running = false;
+    setTimeout(() => { if (!running && planetHealth > 0) startWave(); }, 1500);
+  }
 
-        function fireProjectile(ringIndex) {
-            const projectile = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 16), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-            projectile.position.copy(rings[ringIndex].position);
-            scene.add(projectile);
-            projectiles.push({ object: projectile, ringIndex });
-            pewSound.start(audioCtx.currentTime);
-        }
+  updateHUD();
 
-        function updateProjectiles() {
-            for (let i = projectiles.length - 1; i >= 0; i--) {
-                const projectile = projectiles[i];
-                projectile.object.position.add(new THREE.Vector3(0, 0.1, 0));
-                if (projectile.object.position.length() > 10) {
-                    scene.remove(projectile.object);
-                    projectiles.splice(i, 1);
-                }
-            }
-        }
+  // Rotate ring groups
+  ringGroups.forEach((g, i) => {
+    g.rotation.y += 0.005 * (i + 1) * (1 + (i % 2 === 0 ? 1 : -1));
+  });
 
-        function updateEnemies() {
-            for (let i = enemies.length - 1; i >= 0; i--) {
-                const enemy = enemies[i];
-                enemy.object.position.add(enemy.velocity);
-                if (enemy.object.position.length() < 1) {
-                    planetHealth -= 10;
-                    updatePlanetHealth();
-                    alertSound.start(audioCtx.currentTime);
-                    scene.remove(enemy.object);
-                    enemies.splice(i, 1);
-                    combo = 0;
-                }
-            }
-        }
+  // Rotate glow ring
+  glowRing.rotation.z += 0.01;
 
-        function checkCollisions() {
-            for (let i = projectiles.length - 1; i >= 0; i--) {
-                const projectile = projectiles[i];
-                for (let j = enemies.length - 1; j >= 0; j--) {
-                    const enemy = enemies[j];
-                    if (projectile.object.position.distanceTo(enemy.object.position) < 0.2) {
-                        score++;
-                        combo++;
-                        updateHUD();
-                        explosionSound.start(audioCtx.currentTime);
-                        scene.remove(projectile.object);
-                        scene.remove(enemy.object);
-                        projectiles.splice(i, 1);
-                        enemies.splice(j, 1);
-                        createExplosion(projectile.object.position);
-                        break;
-                    }
-                }
-            }
-        }
+  // Rotate planet slowly
+  planet.rotation.y += 0.003;
 
-        function createExplosion(position) {
-            for (let i = 0; i < 10; i++) {
-                const particle = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-                particle.position.copy(position);
-                scene.add(particle);
-                const velocity = new THREE.Vector3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).normalize().multiplyScalar(0.1);
-                setTimeout(() => {
-                    scene.remove(particle);
-                }, 1000);
-            }
-        }
+  // Rotate starfield
+  stars.rotation.y += 0.0005;
+}
 
-        function updateHUD() {
-            document.getElementById('score').innerText = `得分: ${score}`;
-            document.getElementById('combo').innerText = `连击: ${combo}`;
-        }
+function startWave() {
+  running = true;
+  enemiesSpawnedThisWave = 0;
+  enemiesPerWave = 8 + wave * 3;
+  waveTimer = 0;
+}
 
-        function updatePlanetHealth() {
-            planetHealthBar.style.width = `${planetHealth}%`;
-            if (planetHealth <= 0) {
-                gameOver();
-            }
-        }
+function updateHUD() {
+  $scoreEl.textContent = score;
+  $comboEl.textContent = combo;
+  $waveEl.textContent = wave;
+}
 
-        function gameOver() {
-            hud.style.display = 'none';
-            planetHealthBar.parentNode.style.display = 'none';
-            gameOverScreen.style.display = 'block';
-            document.getElementById('final-score').innerText = `最终得分: ${score}`;
-        }
+function updateHealthBar() {
+  $healthFill.style.width = Math.max(0, planetHealth) + '%';
+}
 
-        function animate() {
-            requestAnimationFrame(animate);
-            updateProjectiles();
-            updateEnemies();
-            checkCollisions();
+// ───────────────────── CLICK DETECTION ─────────────────────
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
 
-            for (let i = 0; i < ringCooldowns.length; i++) {
-                if (ringCooldowns[i] > 0) ringCooldowns[i]--;
-            }
+function onPointerDown(e) {
+  if (!running) return;
+  e.preventDefault();
 
-            if (Math.random() < 0.05) {
-                spawnEnemy();
-            }
+  const x = e.clientX || (e.touches && e.touches[0].clientX) || 0;
+  const y = e.clientY || (e.touches && e.touches[0].clientY) || 0;
 
-            camera.lookAt(planet.position);
-            camera.position.add(new THREE.Vector3(0, 0, 0.1));
-            renderer.render(scene, camera);
-        }
+  mouse.x = (x / window.innerWidth) * 2 - 1;
+  mouse.y = -(y / window.innerHeight) * 2 + 1;
 
-        function spawnEnemy() {
-            const enemyGeometry = new THREE.BufferGeometry();
-            const positions = new Float32Array([-0.5, -0.5, 0, 0.5, -0.5, 0, 0, 0.5, 0]);
-            enemyGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            const enemy = new THREE.Mesh(enemyGeometry, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
-            const direction = new THREE.Vector3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).normalize();
-            enemy.position.copy(direction.multiplyScalar(10));
-            scene.add(enemy);
-            enemies.push({ object: enemy, velocity: direction.multiplyScalar(-0.1) });
-        }
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(rings);
 
-        function onResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
+  if (hits.length > 0) {
+    const ringIndex = rings.indexOf(hits[0].object);
+    if (ringIndex >= 0 && ringCooldowns[ringIndex] <= 0) {
+      fireProjectile(ringIndex);
+    }
+  }
+}
 
-        init();
-    </script>
+// ───────────────────── GAME FLOW ─────────────────────
+function animLoop() {
+  animFrameId = requestAnimationFrame(animLoop);
+  if (running) update();
+}
+
+function startGame() {
+  initAudio();
+  $start.style.display = 'none';
+  $over.style.display = 'none';
+  $hud.style.display = 'block';
+  $hw.style.display = 'block';
+  score = 0; combo = 0; maxCombo = 0; planetHealth = 100; wave = 1;
+  ringCooldowns = [0, 0, 0];
+  updateHUD();
+  updateHealthBar();
+  // Clear any leftover objects
+  for (const p of projectiles) { scene.remove(p); p.geometry?.dispose(); p.material?.dispose(); }
+  for (const e of enemies) { scene.remove(e.mesh); e.mesh.geometry?.dispose(); e.mesh.material?.dispose(); }
+  for (const p of particles) { scene.remove(p); p.geometry?.dispose(); p.material?.dispose(); }
+  projectiles = []; enemies = []; particles = [];
+  enemiesSpawnedThisWave = 0; enemiesPerWave = 8; waveTimer = 0;
+  startWave();
+}
+
+function gameOver() {
+  running = false;
+  $hud.style.display = 'none';
+  $hw.style.display = 'none';
+  $over.style.display = 'block';
+  $finalScore.textContent = '最终得分: ' + score + ' | 最大连击: ' + maxCombo;
+  $finalWave.textContent = '到达波次: ' + wave;
+  sfxGameOver();
+  // Clean up
+  for (const p of projectiles) { scene.remove(p); p.geometry?.dispose(); p.material?.dispose(); }
+  for (const e of enemies) { scene.remove(e.mesh); e.mesh.geometry?.dispose(); e.mesh.material?.dispose(); }
+  for (const p of particles) { scene.remove(p); p.geometry?.dispose(); p.material?.dispose(); }
+  projectiles = []; enemies = []; particles = [];
+}
+
+function restart() {
+  startGame();
+}
+
+// ───────────────────── EVENTS ─────────────────────
+document.getElementById('start-btn').addEventListener('click', startGame);
+document.getElementById('restart-btn').addEventListener('click', restart);
+document.addEventListener('pointerdown', onPointerDown);
+document.addEventListener('touchstart', onPointerDown, { passive: false });
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ───────────────────── INIT ─────────────────────
+animLoop();
+</script>
 </body>
 </html>
